@@ -2158,8 +2158,8 @@ function rectsOverlap(a, b) {
 }
 
 function placeDetectionLabel(obj, width, height, placedRects) {
-  const labelW = 164;
-  const labelH = 44;
+  const labelW = 228;
+  const labelH = 88;
   const candidates = [
     { x: obj.air.x + 16, y: obj.air.y - 14 },
     { x: obj.air.x + 16, y: obj.air.y + 18 },
@@ -2180,17 +2180,37 @@ function placeDetectionLabel(obj, width, height, placedRects) {
   return rect;
 }
 
+function compactTrackSource(source) {
+  const cleaned = String(source || "")
+    .replace(/^uav-/i, "")
+    .replace(/[^a-z0-9]/gi, "");
+  return cleaned ? cleaned[0].toUpperCase() : "";
+}
+
+function formatTrackSourcePair(sources = []) {
+  const compact = sources.slice(0, 2).map(compactTrackSource).filter(Boolean);
+  return compact.length ? compact.join("+") : "";
+}
+
 function addDetectionLabel(obj, width, height, placedRects) {
   const rect = placeDetectionLabel(obj, width, height, placedRects);
   const label = document.createElement("div");
-  label.className = `target-label ${obj.threat} ${obj.trackStatus || ""}`;
+  label.className = `target-label ${obj.threat} ${obj.trackStatus || ""} ${obj.type || ""}`;
   label.style.left = `${rect.x}px`;
   label.style.top = `${rect.y}px`;
 
+  const header = document.createElement("div");
+  header.className = "target-label-header";
   const title = document.createElement("strong");
-  title.textContent = `${obj.className} ${Math.round(obj.detectionConfidence * 100)}%`;
-  const details = document.createElement("span");
-  const sourceCopy = obj.trackSources?.length ? ` · ${obj.trackSources.slice(0, 2).join("+")}` : "";
+  title.textContent = obj.className;
+  const confidence = document.createElement("span");
+  confidence.className = "target-confidence";
+  confidence.textContent = `${Math.round(obj.detectionConfidence * 100)}%`;
+  header.append(title, confidence);
+
+  const grid = document.createElement("div");
+  grid.className = "target-label-grid";
+  const sourceCopy = formatTrackSourcePair(obj.trackSources);
   const statusCopy = obj.affiliation === "friendly"
     ? "Shared Friendly ID"
     : obj.trainingClass
@@ -2198,8 +2218,18 @@ function addDetectionLabel(obj, width, height, placedRects) {
     : obj.trackStatus === "memory"
       ? `Last Seen ${Math.round(obj.trackAge)}s`
       : "Live Track";
-  details.textContent = `${obj.callsign} · ${formatMeters(obj.range)} · ${statusCopy}${sourceCopy}`;
-  label.append(title, details);
+  for (const value of [
+    obj.callsign,
+    formatMeters(obj.range),
+    statusCopy,
+    sourceCopy ? `Src ${sourceCopy}` : "Local Cue",
+  ]) {
+    const chip = document.createElement("span");
+    chip.className = "target-chip";
+    chip.textContent = value;
+    grid.appendChild(chip);
+  }
+  label.append(header, grid);
   overlay.appendChild(label);
 }
 

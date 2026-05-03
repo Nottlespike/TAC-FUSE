@@ -112,8 +112,21 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(labelCount).toBeLessThanOrEqual(3);
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
+  await expect(page.locator(".target-label .target-chip").first()).toBeVisible();
   const targetClasses = (await page.locator(".target-label strong").allTextContents()).join(" ");
   expect(targetClasses).toMatch(/Unknown Ground Contact|Unknown Air Contact|Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing|Friendly/);
+  const overflowingLabels = await page.locator(".target-label").evaluateAll((labels) =>
+    labels
+      .filter((label) => {
+        const root = label;
+        const children = Array.from(root.querySelectorAll("*"));
+        return root.scrollWidth > root.clientWidth + 1
+          || root.scrollHeight > root.clientHeight + 1
+          || children.some((child) => child.scrollWidth > child.clientWidth + 1);
+      })
+      .map((label) => label.textContent?.trim()),
+  );
+  expect(overflowingLabels).toEqual([]);
 
   await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());
   await page.waitForTimeout(300);
