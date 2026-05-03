@@ -120,6 +120,7 @@ def test_task_pack_yaml_contains_priority_order() -> None:
         "Scenario portfolio",
         "Playwright visual polish",
         "3D field-C2 quantification",
+        "Rendered object training view",
         "Power/latency posture",
         "Enterprise sync boundary",
     ]
@@ -152,9 +153,14 @@ def test_generated_tasks_include_scenarios_playwright_and_cuda() -> None:
     assert "cuda_route_optimization" in tasks_by_focus
     assert "scenario_portfolio" in tasks_by_focus
     assert "playwright_visual_polish" in tasks_by_focus
+    assert "object_rendering_training" in tasks_by_focus
+    assert "four-wheeled vehicle" in tasks_by_focus["object_rendering_training"]["prompt"]
+    assert "AOI edge" in tasks_by_focus["object_rendering_training"]["prompt"]
     assert "Convoy Overwatch" in task_pack["metadata"]["scenario_portfolio"]
     for task in task_pack["tasks"]:
         assert task["metadata"]["scenario_portfolio_required"] is True
         assert task["metadata"]["playwright_visual_required"] is True
         assert task["metadata"]["cuda_route_optimization_required"] is True
+        assert task["metadata"]["recognizable_object_rendering_required"] is True
+        assert task["metadata"]["aerial_contacts_enter_from_aoi_edge"] is True
         assert task["metadata"]["uv_bringup_required"] is True

@@ -38,6 +38,7 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("scenario_portfolio", "Scenario portfolio"),
     ("playwright_visual_polish", "Playwright visual polish"),
     ("object_map_quantification", "3D field-C2 quantification"),
+    ("object_rendering_training", "Rendered object training view"),
     ("power_latency_posture", "Power/latency posture"),
     ("enterprise_sync_boundary", "Enterprise sync boundary"),
 )
@@ -139,6 +140,14 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "detectionconfidence",
         "range and altitude",
     ),
+    "object_rendering_training": (
+        "four-wheeled vehicle",
+        "vehicle silhouette",
+        "classifier",
+        "training",
+        "aoi edge",
+        "ingress",
+    ),
     "power_latency_posture": (
         "power",
         "battery",
@@ -231,6 +240,9 @@ OBJECT_MAP_REQUIRED_TERMS: dict[str, tuple[str, ...]] = {
         "detectionconfidence",
         "range and altitude labels",
         "wheeled vehicle",
+        "four-wheeled vehicle",
+        "drawwheeledvehicleglyph",
+        "ingresspath",
         "rf source",
     ),
     "web/index.html": (
@@ -728,6 +740,25 @@ def default_backlog() -> list[TaskBlueprint]:
             ),
         ),
         TaskBlueprint(
+            name="tac-fuse-p1-rendered-object-training-view",
+            priority="P1",
+            phase="beautify",
+            title="Render tangible classifier objects in the field view",
+            focus="object_rendering_training",
+            body=(
+                "Make the 3D field C2 map render recognizable class instances instead "
+                "of anonymous circles. Start with a four-wheeled vehicle silhouette "
+                "that can serve as a synthesized local classifier frame, and make aerial "
+                "contacts enter from the AOI edge before traversing the workspace. Do not "
+                "show aerial assets popping into the middle unless the scenario is explicitly "
+                "a catastrophic track-loss/reacquisition proof."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && uv run python scripts/self_improve.py "
+                "audit --skip-ruff --fail-on-findings && npm run test:visual"
+            ),
+        ),
+        TaskBlueprint(
             name="tac-fuse-p1-enterprise-sync-boundary",
             priority="P1",
             phase="create",
@@ -818,6 +849,9 @@ Guardrails:
   report a GPU badge. CPU parity must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
+- Rendered object work should use recognizable class instances such as a four-wheeled
+  vehicle silhouette, and aerial contacts should enter from the AOI edge instead of
+  popping into the middle of the workspace.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
 - Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,
@@ -845,6 +879,8 @@ def task_from_blueprint(blueprint: TaskBlueprint) -> dict[str, Any]:
             "scenario_portfolio_required": True,
             "playwright_visual_required": True,
             "cuda_route_optimization_required": True,
+            "recognizable_object_rendering_required": True,
+            "aerial_contacts_enter_from_aoi_edge": True,
             "uv_bringup_required": True,
         },
     }
@@ -896,6 +932,9 @@ Guardrails:
   report a GPU badge. CPU parity must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
+- Rendered object work should use recognizable class instances such as a four-wheeled
+  vehicle silhouette, and aerial contacts should enter from the AOI edge instead of
+  popping into the middle of the workspace.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
 - Strix bring-up tasks may hard-require uv, CUDA/RTX, OpenVINO, Redis, and the
@@ -924,6 +963,8 @@ contrib/TAC-FUSE/CHANGELOG.md.
             "scenario_portfolio_required": True,
             "playwright_visual_required": True,
             "cuda_route_optimization_required": True,
+            "recognizable_object_rendering_required": True,
+            "aerial_contacts_enter_from_aoi_edge": True,
             "uv_bringup_required": True,
         },
     }
@@ -989,6 +1030,9 @@ def build_task_pack(
             ],
             "playwright_visual_required": True,
             "cuda_route_optimization_required": True,
+            "recognizable_object_rendering_required": True,
+            "first_rendered_training_class": "four_wheeled_vehicle",
+            "aerial_contacts_enter_from_aoi_edge": True,
             "uv_bringup_required": True,
         },
         "tasks": tasks,

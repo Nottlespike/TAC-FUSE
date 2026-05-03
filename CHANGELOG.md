@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scene context rather than a bounding-box detection claim.
 
 ### Changed
+- Rendered object work now stays tied to classifier-training evidence: the 3D
+  Field C2 view draws the wheeled vehicle as a four-wheel silhouette, counts
+  vehicle frames for the local classifier story, and moves aerial contacts in
+  from AOI edges instead of spawning them in the middle of the map.
 - Reworked the Local C2 route action from an ambiguous Route Solve lane toggle
   into a Replan Route command that scores local candidate routes, stages the
   command for sync, and draws the selected plan on both the AOI and 3D Field C2

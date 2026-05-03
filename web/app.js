@@ -172,6 +172,7 @@ const sceneClassTargets = [
     heading: 18,
     speed: 7,
     routeIndex: 4,
+    trainingClass: "four_wheeled_vehicle",
     freshness: 0.9,
     confidence: 0.78,
     latency: 58,
@@ -216,14 +217,20 @@ const sceneClassTargets = [
     key: "micro",
     callsign: "Track 22",
     type: "small-uas",
-    x: 420,
-    y: 560,
+    x: 30,
+    y: 470,
     z: 72,
     heading: 82,
     speed: 17,
-    orbitCenter: { x: 420, y: 560 },
-    orbitRadius: 88,
-    orbitPhase: 0.8,
+    routeIndex: 1,
+    pathDirection: 1,
+    ingressPath: [
+      { x: 30, y: 470 },
+      { x: 265, y: 520 },
+      { x: 540, y: 560 },
+      { x: 835, y: 500 },
+      { x: 1170, y: 430 },
+    ],
     freshness: 0.76,
     confidence: 0.64,
     latency: 71,
@@ -249,14 +256,20 @@ const sceneClassTargets = [
     key: "unknown",
     callsign: "Unknown 09",
     type: "unknown-uas",
-    x: 520,
-    y: 500,
+    x: 860,
+    y: 1170,
     z: 90,
     heading: 112,
     speed: 14,
-    orbitCenter: { x: 520, y: 500 },
-    orbitRadius: 64,
-    orbitPhase: 2.6,
+    routeIndex: 1,
+    pathDirection: 1,
+    ingressPath: [
+      { x: 860, y: 1170 },
+      { x: 780, y: 930 },
+      { x: 610, y: 700 },
+      { x: 420, y: 500 },
+      { x: 30, y: 360 },
+    ],
     freshness: 0.73,
     confidence: 0.53,
     latency: 82,
@@ -715,6 +728,27 @@ function movePlanarActor(actor, target, dt, cruiseSpeed, turnRateDeg) {
   return distance;
 }
 
+function moveAerialIngressContact(target, dt, cruiseSpeed, altitudeM, altitudePulse) {
+  const path = target.ingressPath || [
+    { x: 30, y: target.y },
+    { x: WORLD_M * 0.5, y: WORLD_M * 0.5 },
+    { x: WORLD_M - 30, y: target.y },
+  ];
+  target.routeIndex ??= 1;
+  target.pathDirection ??= 1;
+  const waypoint = path[target.routeIndex] || path[0];
+  const distance = movePlanarActor(target, waypoint, dt, cruiseSpeed, 44);
+  if (distance < 22) {
+    let nextIndex = target.routeIndex + target.pathDirection;
+    if (nextIndex < 0 || nextIndex >= path.length) {
+      target.pathDirection *= -1;
+      nextIndex = target.routeIndex + target.pathDirection;
+    }
+    target.routeIndex = clamp(nextIndex, 0, path.length - 1);
+  }
+  target.z = altitudeM + Math.sin(simTime * 1.15 + target.x * 0.01) * altitudePulse;
+}
+
 function updateFieldContacts(dt) {
   for (const target of sceneClassTargets) {
     target.freshness = clamp(target.freshness + Math.sin(simTime * 0.42 + target.x * 0.01) * 0.002, 0.62, 0.98);
@@ -745,12 +779,7 @@ function updateFieldContacts(dt) {
       }
       target.z = terrainHeightAt(target.x, target.y) + 2;
     } else if (target.type === "small-uas") {
-      target.orbitPhase = (target.orbitPhase || 0) + dt * ((target.speed || 16) / (target.orbitRadius || 80));
-      const center = target.orbitCenter || { x: target.x, y: target.y };
-      target.x = clamp(center.x + Math.cos(target.orbitPhase) * (target.orbitRadius || 80), 30, WORLD_M - 30);
-      target.y = clamp(center.y + Math.sin(target.orbitPhase) * (target.orbitRadius || 80), 30, WORLD_M - 30);
-      target.heading = ((target.orbitPhase + Math.PI / 2) * 180) / Math.PI;
-      target.z = 74 + Math.sin(target.orbitPhase * 1.7) * 8;
+      moveAerialIngressContact(target, dt, target.speed || 16, 76, 8);
     } else if (target.type === "unknown-contact") {
       const nextIndex = target.routeIndex ?? 0;
       const distance = movePlanarActor(target, ROUTE_GUARD_PATH[nextIndex], dt, 4.8, 35);
@@ -759,12 +788,7 @@ function updateFieldContacts(dt) {
       }
       target.z = terrainHeightAt(target.x, target.y) + 4;
     } else if (target.type === "unknown-uas") {
-      target.orbitPhase = (target.orbitPhase || 0) + dt * ((target.speed || 14) / (target.orbitRadius || 64));
-      const center = target.orbitCenter || { x: target.x, y: target.y };
-      target.x = clamp(center.x + Math.cos(target.orbitPhase) * (target.orbitRadius || 64), 30, WORLD_M - 30);
-      target.y = clamp(center.y + Math.sin(target.orbitPhase) * (target.orbitRadius || 64), 30, WORLD_M - 30);
-      target.heading = ((target.orbitPhase + Math.PI / 2) * 180) / Math.PI;
-      target.z = 86 + Math.sin(target.orbitPhase * 1.4) * 7;
+      moveAerialIngressContact(target, dt, target.speed || 14, 88, 7);
     }
   }
 }
@@ -1001,6 +1025,7 @@ function syncGateLabel() {
 function classifyFrame(feed, visible) {
   const objectCount = visible.length;
   const airCount = visible.filter((obj) => obj.type !== "ground").length;
+  const vehicleCount = visible.filter((obj) => obj.type === "vehicle").length;
   const unknownCount = visible.filter((obj) => obj.type.startsWith("unknown")).length;
   const avgConfidence = objectCount
     ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / objectCount
@@ -1009,7 +1034,14 @@ function classifyFrame(feed, visible) {
     return [
       ["Unknown Contact Requires ID", 0.9],
       ["Distributed NPU Cue Pass", Math.max(0.52, feed.npu?.confidence || avgConfidence)],
-      ["BVH Route Guard Check", 0.88],
+      [vehicleCount ? "Four-Wheeled Vehicle Frames" : "BVH Route Guard Check", vehicleCount ? clamp(vehicleCount / 3, 0.34, 0.94) : 0.88],
+    ];
+  }
+  if (vehicleCount > 0) {
+    return [
+      ["Four-Wheeled Vehicle Frames", clamp(vehicleCount / 3, 0.34, 0.94)],
+      ["Objects Quantified", Math.max(0.55, avgConfidence)],
+      ["Range And Altitude Labels", objectCount ? 0.91 : 0.12],
     ];
   }
   if (visible.some((obj) => obj.threat === "critical")) {
@@ -1599,6 +1631,32 @@ function drawRayFan(ctx, feed, width, height) {
   }
 }
 
+function drawWheeledVehicleGlyph(ctx, x, y, headingDeg, scale = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((headingDeg * Math.PI) / 180);
+  ctx.beginPath();
+  ctx.rect(-14 * scale, -7 * scale, 28 * scale, 14 * scale);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(8, 13, 15, 0.92)";
+  for (const wheel of [
+    [-10, -8],
+    [10, -8],
+    [-10, 8],
+    [10, 8],
+  ]) {
+    ctx.beginPath();
+    ctx.ellipse(wheel[0] * scale, wheel[1] * scale, 3.2 * scale, 2.1 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "rgba(245, 241, 232, 0.28)";
+  ctx.fillRect(-3 * scale, -5 * scale, 9 * scale, 10 * scale);
+  ctx.restore();
+}
+
 function drawAsset(ctx, asset, width, height) {
   const { x, y } = worldToCanvas(asset, width, height);
   const color = colors[asset.key] || "#f2efe5";
@@ -1626,6 +1684,14 @@ function drawFieldContact(ctx, contact, width, height) {
   ctx.fillStyle = color;
   ctx.strokeStyle = contact.type === "rf-source" ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
   ctx.lineWidth = 1.6;
+  if (contact.type === "vehicle") {
+    drawWheeledVehicleGlyph(ctx, x, y, contact.heading || 0, 0.72);
+    ctx.fillStyle = "#f2efe5";
+    ctx.font = "11px Inter, Arial";
+    ctx.fillText(contact.callsign, x + 15, y + 4);
+    ctx.restore();
+    return;
+  }
   ctx.beginPath();
   if (contact.type === "unknown-contact") {
     ctx.moveTo(x, y - 8);
@@ -1638,8 +1704,6 @@ function drawFieldContact(ctx, contact, width, height) {
     ctx.lineTo(x + 9, y + 7);
     ctx.lineTo(x - 9, y + 7);
     ctx.closePath();
-  } else if (contact.type === "vehicle") {
-    ctx.rect(x - 8, y - 5, 16, 10);
   } else if (contact.type === "personnel") {
     ctx.arc(x - 4, y, 3.5, 0, Math.PI * 2);
     ctx.moveTo(x + 7.5, y);
@@ -2028,46 +2092,50 @@ function drawPovObjectMarker(obj) {
   povCtx.fillStyle = color;
   povCtx.strokeStyle = critical ? "#ff5d5d" : "#f5f1e8";
   povCtx.lineWidth = critical ? 3 : 2;
-  povCtx.beginPath();
-  if (obj.type === "unknown-contact") {
-    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
-    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
-    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
-    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
-    povCtx.closePath();
-  } else if (obj.type === "unknown-uas") {
-    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.95);
-    povCtx.lineTo(obj.air.x + markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
-    povCtx.lineTo(obj.air.x - markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
-    povCtx.closePath();
-  } else if (obj.type === "ground" || obj.type === "vehicle") {
-    povCtx.rect(obj.air.x - markerRadius, obj.air.y - markerRadius / 2, markerRadius * 2, markerRadius);
-  } else if (obj.type === "personnel") {
-    povCtx.arc(obj.air.x - 5, obj.air.y, 4.5, 0, Math.PI * 2);
-    povCtx.moveTo(obj.air.x + 9, obj.air.y);
-    povCtx.arc(obj.air.x + 5, obj.air.y, 4.5, 0, Math.PI * 2);
-  } else if (obj.type === "rf-source") {
-    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
-    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
-    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
-    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
-    povCtx.closePath();
-  } else if (obj.type === "fixed-wing") {
-    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
-    povCtx.lineTo(obj.air.x + markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
-    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius * 0.25);
-    povCtx.lineTo(obj.air.x - markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
-    povCtx.closePath();
-  } else if (obj.type === "small-uas") {
-    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.85);
-    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y + markerRadius * 0.65);
-    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y + markerRadius * 0.65);
-    povCtx.closePath();
+  if (obj.type === "vehicle") {
+    drawWheeledVehicleGlyph(povCtx, obj.air.x, obj.air.y, obj.heading || 0, 0.88);
   } else {
-    povCtx.arc(obj.air.x, obj.air.y, markerRadius, 0, Math.PI * 2);
+    povCtx.beginPath();
+    if (obj.type === "unknown-contact") {
+      povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+      povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
+      povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
+      povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
+      povCtx.closePath();
+    } else if (obj.type === "unknown-uas") {
+      povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.95);
+      povCtx.lineTo(obj.air.x + markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
+      povCtx.lineTo(obj.air.x - markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
+      povCtx.closePath();
+    } else if (obj.type === "ground") {
+      povCtx.rect(obj.air.x - markerRadius, obj.air.y - markerRadius / 2, markerRadius * 2, markerRadius);
+    } else if (obj.type === "personnel") {
+      povCtx.arc(obj.air.x - 5, obj.air.y, 4.5, 0, Math.PI * 2);
+      povCtx.moveTo(obj.air.x + 9, obj.air.y);
+      povCtx.arc(obj.air.x + 5, obj.air.y, 4.5, 0, Math.PI * 2);
+    } else if (obj.type === "rf-source") {
+      povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+      povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
+      povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
+      povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
+      povCtx.closePath();
+    } else if (obj.type === "fixed-wing") {
+      povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+      povCtx.lineTo(obj.air.x + markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
+      povCtx.lineTo(obj.air.x, obj.air.y + markerRadius * 0.25);
+      povCtx.lineTo(obj.air.x - markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
+      povCtx.closePath();
+    } else if (obj.type === "small-uas") {
+      povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.85);
+      povCtx.lineTo(obj.air.x + markerRadius, obj.air.y + markerRadius * 0.65);
+      povCtx.lineTo(obj.air.x - markerRadius, obj.air.y + markerRadius * 0.65);
+      povCtx.closePath();
+    } else {
+      povCtx.arc(obj.air.x, obj.air.y, markerRadius, 0, Math.PI * 2);
+    }
+    povCtx.fill();
+    povCtx.stroke();
   }
-  povCtx.fill();
-  povCtx.stroke();
 
   if (obj.id !== selectedId) {
     const boxW = obj.type === "ground" ? 42 : 54;
@@ -2125,6 +2193,8 @@ function addDetectionLabel(obj, width, height, placedRects) {
   const sourceCopy = obj.trackSources?.length ? ` · ${obj.trackSources.slice(0, 2).join("+")}` : "";
   const statusCopy = obj.affiliation === "friendly"
     ? "Shared Friendly ID"
+    : obj.trainingClass
+      ? "Classifier Frame"
     : obj.trackStatus === "memory"
       ? `Last Seen ${Math.round(obj.trackAge)}s`
       : "Live Track";
@@ -2148,6 +2218,7 @@ function drawPovQuantificationPanel(visible, width, height) {
     ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / visible.length
     : 0;
   const airTracks = visible.filter((obj) => obj.type !== "ground").length;
+  const vehicleFrames = visible.filter((obj) => obj.type === "vehicle").length;
   const panelWidth = 228;
   const x = width - panelWidth - 18;
   const y = 18;
@@ -2156,7 +2227,7 @@ function drawPovQuantificationPanel(visible, width, height) {
   povCtx.strokeStyle = "rgba(85, 214, 166, 0.36)";
   povCtx.lineWidth = 1;
   povCtx.beginPath();
-  povCtx.roundRect(x, y, panelWidth, 82, 8);
+  povCtx.roundRect(x, y, panelWidth, 98, 8);
   povCtx.fill();
   povCtx.stroke();
 
@@ -2173,6 +2244,7 @@ function drawPovQuantificationPanel(visible, width, height) {
     x + 14,
     y + 70,
   );
+  povCtx.fillText(`${vehicleFrames} Vehicle Frames For Classifier`, x + 14, y + 88);
   povCtx.restore();
 }
 
