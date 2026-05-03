@@ -8,6 +8,9 @@ retain the same result shape.
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from dataclasses import asdict, dataclass
 from math import hypot
 from typing import Any
@@ -65,32 +68,120 @@ class RayQueryResult:
 
 
 def inspect_ray_runtime(*, require_rtx: bool = False) -> RayQueryStatus:
-    """Detect whether the RTX path can be used without making it a hard import."""
+    """Detect whether the RTX path can be used without making it a hard import.
 
-    try:
-        import cuda.bindings.driver as cuda_driver  # type: ignore[import-not-found]
+    Prefer Python CUDA driver bindings when present.  On Strix-style demo
+    targets, a non-interactive SSH shell may have the NVIDIA driver and RTX GPU
+    ready before the Python CUDA package is installed, so `nvidia-smi` is also a
+    valid hardware-readiness signal for selecting the accelerated geometry lane.
+    """
 
-        del cuda_driver
+    if _cuda_driver_bindings_available():
         return RayQueryStatus(
             backend="rtx",
             available=True,
             accelerated=True,
             reason="CUDA driver bindings importable; RTX BVH path may be selected",
         )
-    except Exception:
-        if require_rtx:
-            return RayQueryStatus(
-                backend="unavailable",
-                available=False,
-                accelerated=False,
-                reason="RTX/CUDA ray-query runtime is not available",
-            )
-        return RayQueryStatus(
-            backend="cpu_parity",
-            available=True,
+
+    nvidia_status = _inspect_nvidia_smi()
+    if nvidia_status is not None and nvidia_status.accelerated:
+        return nvidia_status
+    if require_rtx:
+        return nvidia_status or RayQueryStatus(
+            backend="unavailable",
+            available=False,
             accelerated=False,
-            reason="using deterministic software validation path",
+            reason="RTX/CUDA ray-query runtime is not available",
         )
+
+    return RayQueryStatus(
+        backend="cpu_parity",
+        available=True,
+        accelerated=False,
+        reason="using deterministic software validation path",
+    )
+
+
+def _cuda_driver_bindings_available() -> bool:
+    try:
+        import cuda.bindings.driver as cuda_driver  # type: ignore[import-not-found]
+
+        del cuda_driver
+        return True
+    except Exception:
+        return False
+
+
+def _inspect_nvidia_smi() -> RayQueryStatus | None:
+    executable = shutil.which("nvidia-smi")
+    if executable is None:
+        return None
+
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "--query-gpu=name,memory.total,driver_version",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return RayQueryStatus(
+            backend="unavailable",
+            available=False,
+            accelerated=False,
+            reason="nvidia-smi could not inspect the RTX/CUDA runtime",
+        )
+
+    if result.returncode != 0:
+        return RayQueryStatus(
+            backend="unavailable",
+            available=False,
+            accelerated=False,
+            reason=(result.stderr.strip() or "nvidia-smi returned non-zero"),
+        )
+
+    first_line = next((line.strip() for line in result.stdout.splitlines() if line.strip()), "")
+    parts = [part.strip() for part in first_line.split(",")]
+    if len(parts) < 3:
+        return RayQueryStatus(
+            backend="unavailable",
+            available=False,
+            accelerated=False,
+            reason="nvidia-smi did not return GPU name, memory, and driver",
+        )
+
+    gpu_name, memory_text, driver_version = parts[:3]
+    try:
+        memory_mib = int(memory_text)
+    except ValueError:
+        memory_mib = 0
+    min_memory_mib = int(os.environ.get("TAC_FUSE_MIN_GPU_MEMORY_MIB", "7500"))
+    if "rtx" in gpu_name.lower() and memory_mib >= min_memory_mib:
+        return RayQueryStatus(
+            backend="rtx",
+            available=True,
+            accelerated=True,
+            reason=(
+                f"nvidia-smi reports {gpu_name} with {memory_mib} MiB VRAM "
+                f"and driver {driver_version}; RTX geometry lane may be selected"
+            ),
+        )
+
+    return RayQueryStatus(
+        backend="unavailable",
+        available=False,
+        accelerated=False,
+        reason=(
+            f"nvidia-smi reports {gpu_name} with {memory_mib} MiB VRAM; "
+            f"requires RTX-class GPU with at least {min_memory_mib} MiB"
+        ),
+    )
 
 
 def default_primitives() -> list[BVHPrimitive]:

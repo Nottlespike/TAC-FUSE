@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- RT geometry control boundary (`tac_fuse.rt_control`) that turns ray-query
+  results into canonical local C2 commands for Alpha/Bravo/Charlie/Delta style
+  assets, persists non-normal geometry decisions through `LocalC2Authority`,
+  and keeps the same decision shape under deterministic software validation.
+- Test suite `tests/test_rt_control.py` proving accelerated geometry selection,
+  validation fallback shape, low-battery return decisions, strict hardware
+  failure behavior, and state-first command persistence.
+- Unified classifier boundary (`tac_fuse.vision.classifier`) defining a shared
+  output contract that allows a trained model to replace the naive zero-shot
+  labeler without changing local C2, route pathing, sync, or alert contracts.
+  The `ClassifierOutput` dataclass includes: track ID, source ID, frame path,
+  class label, confidence, optional bounding box or segmentation mask, device,
+  model ID, and inference latency.
+- `ClassifierBoundary` protocol specifying the interface all classifiers must
+  implement: `ready()`, `inspect_status()`, `classify()`, and `classify_batch()`.
+- `ModelAssetError` exception for clear failure when model assets are missing.
+  This error is designed to be caught at the hardware lane boundary and never
+  propagate to block the core route-guard demo.
+- `NaiveZeroShotClassifier` as a fallback classifier that requires no model
+  assets and is always ready. Supports heuristic-based labeling using field
+  condition, object count, and battery level metadata.
+- `BoundingBox` and `SegmentationMask` dataclasses for optional object detection
+  and pixel-level segmentation outputs.
+- `create_classifier()` factory function for instantiating classifiers with
+  automatic fallback to naive zero-shot when trained models are unavailable.
+- `ClassifierOutput.to_sensor_event()` method for converting classification
+  results to TAC-FUSE `SensorEvent` envelopes for the fusion ingest bus.
+- Test suite `tests/test_classifier_boundary.py` (42 tests) covering the unified
+  classifier boundary, output contract, error handling, and naive classifier.
 - Edge compute display pipeline: `scripts/write_edge_compute_status.py`
   collects the ray-query and Intel NPU runtime inspectors and writes
   `web/edge_compute_status.js` so the static browser demo can display live
@@ -66,6 +95,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scene context rather than a bounding-box detection claim.
 
 ### Changed
+- The browser field view now applies RT geometry decisions to drone standoff,
+  avoidance, return, and hold behavior instead of treating geometry as a passive
+  status label. The metric strip surfaces concise RT-control state while the
+  detailed hardware panel keeps backend and latency context.
+- The alpha test plan and self-improvement generator now require CUDA/RTX route
+  work to drive canonical local C2 commands for the swarm, not only report a
+  hardware badge.
+- Problem-statement alignment copy now uses the audit-approved "not required"
+  phrasing for the Strix NPU hardware-readiness lane.
+- Edge compute status copy now distinguishes active validation RT control from
+  unverified accelerated hardware instead of showing "Accelerated Compute
+  Pending" as though local C2 were blocked.
+- RTX runtime detection now accepts Strix-style `nvidia-smi` evidence for an
+  RTX GPU and sufficient VRAM even when Python CUDA driver bindings are not
+  installed in the active environment.
 - The browser operator dock now includes an Edge Compute metric sourced from
   `web/edge_compute_status.js`; the default checked-in artifact shows
   accelerated compute pending, while hardware bring-up rewrites it after CUDA

@@ -268,7 +268,7 @@ const sceneClassTargets = [
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
 const edgeCompute = window.TAC_FUSE_EDGE_COMPUTE || null;
-let rayPath = edgeCompute?.ray?.accelerated ? "cuda" : "pending";
+let rayPath = edgeCompute?.ray?.accelerated ? "cuda" : "validation";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -452,15 +452,15 @@ function displayTier(tier) {
 }
 
 function geometryBackendLabel() {
-  return edgeCompute?.ui?.backend_label || (rayPath === "cuda" ? "Accelerated Geometry" : "Geometry Acceleration Pending");
+  return edgeCompute?.ui?.backend_label || (rayPath === "cuda" ? "Accelerated Geometry" : "Validation Geometry");
 }
 
 function edgeComputeSummaryLabel() {
-  return edgeCompute?.ui?.summary_label || "Accelerated Compute Pending";
+  return edgeCompute?.ui?.summary_label || "Validation RT Control";
 }
 
 function edgeNpuLabel() {
-  return edgeCompute?.ui?.npu_label || "Edge NPU Pending";
+  return edgeCompute?.ui?.npu_label || "Edge NPU Unverified";
 }
 
 function edgeComputeFreshnessLabel() {
@@ -471,6 +471,10 @@ function edgeComputeFreshnessLabel() {
   const staleAfterSeconds = edgeCompute?.ui?.stale_after_seconds || 300;
   const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
   return ageSeconds > staleAfterSeconds ? "Stale" : "Live";
+}
+
+function rtControlBackendLabel() {
+  return rayPath === "cuda" ? "Accelerated RT" : "Validation RT";
 }
 
 earthImagery.image.onload = () => {
@@ -731,17 +735,101 @@ function stepSimulation(dt) {
     }
 
     const spatialHits = bvhQuery(feed);
-    const avoidance = spatialHits.find((hit) => hit.kind === "hazard" && hit.distance < hit.radius + 35);
+    const rtDecision = planRtGeometryControl(feed, spatialHits);
+    rememberRtControl(feed, rtDecision);
+    feed.rtControl = rtDecision;
+    const avoidance = rtDecision.hit?.kind === "hazard"
+      ? rtDecision.hit
+      : spatialHits.find((hit) => hit.kind === "hazard" && hit.distance < hit.radius + 35);
     const terrainConflict = spatialHits.find((hit) => hit.kind === "terrain" && hit.distance < hit.radius);
-    const target = avoidance
-      ? {
-          x: feed.x + (feed.x - avoidance.x) * 0.8,
-          y: feed.y + (feed.y - avoidance.y) * 0.8,
-        }
-      : feed.target;
+    const target = rtDecision.target || feed.target;
     moveToward(feed, target, dt, avoidance || terrainConflict);
   }
   updateFusedTracks(dt);
+}
+
+function planRtGeometryControl(feed, hits) {
+  const backend = rtControlBackendLabel();
+  if (feed.battery < 45) {
+    return {
+      command: "return",
+      label: "Return On Reserve",
+      shortLabel: "Return",
+      priority: "Watch",
+      backend,
+      target: { ...BASE },
+      hit: null,
+    };
+  }
+
+  const criticalHazard = hits.find((hit) =>
+    hit.kind === "hazard" && hit.severity === "critical" && hit.distance < hit.radius + 42,
+  );
+  if (criticalHazard) {
+    return {
+      command: "hold",
+      label: `Avoid ${criticalHazard.label}`,
+      shortLabel: "Avoid RF",
+      priority: "Critical",
+      backend,
+      target: escapeTarget(feed, criticalHazard, 170),
+      hit: criticalHazard,
+    };
+  }
+
+  const unknownRouteContact = hits.find((hit) => hit.kind === "unknown" && hit.distance < 360);
+  if (unknownRouteContact) {
+    return {
+      command: "patrol",
+      label: `Standoff ${detectionClass(unknownRouteContact)}`,
+      shortLabel: "Standoff",
+      priority: "Critical",
+      backend,
+      target: escapeTarget(feed, unknownRouteContact, 130),
+      hit: unknownRouteContact,
+    };
+  }
+
+  const terrainClearance = hits.find((hit) => hit.kind === "terrain" && hit.distance < hit.radius);
+  if (terrainClearance) {
+    return {
+      command: "patrol",
+      label: "Terrain Clearance",
+      shortLabel: "Clearance",
+      priority: "Watch",
+      backend,
+      target: feed.target,
+      hit: terrainClearance,
+    };
+  }
+
+  return {
+    command: "resume",
+    label: "Corridor Guarded",
+    shortLabel: "Guarded",
+    priority: "Normal",
+    backend,
+    target: feed.target,
+    hit: null,
+  };
+}
+
+function escapeTarget(feed, source, distance) {
+  const dx = feed.x - source.x;
+  const dy = feed.y - source.y;
+  const magnitude = Math.max(1, Math.hypot(dx, dy));
+  return {
+    x: clamp(feed.x + (dx / magnitude) * distance, 50, WORLD_M - 50),
+    y: clamp(feed.y + (dy / magnitude) * distance, 50, WORLD_M - 50),
+  };
+}
+
+function rememberRtControl(feed, decision) {
+  const signature = `${decision.command}:${decision.shortLabel}`;
+  if (feed.rtControlSignature === signature) return;
+  feed.rtControlSignature = signature;
+  if (simTime < 1 || decision.priority === "Normal") return;
+  pushLog(`${feed.callsign} RT Control ${displayCommand(decision.command)} · ${decision.label}.`);
 }
 
 function moveToward(feed, target, dt, avoidance) {
@@ -930,7 +1018,7 @@ function classifyFrame(feed, visible) {
     return [
       ["Unknown Contact Requires ID", 0.9],
       ["Distributed NPU Cue Pass", Math.max(0.52, feed.npu?.confidence || avgConfidence)],
-      [vehicleCount ? "Four-Wheeled Vehicle Frames" : "BVH Route Guard Check", vehicleCount ? clamp(vehicleCount / 3, 0.34, 0.94) : 0.88],
+      [vehicleCount ? "Four-Wheeled Vehicle Frames" : "Corridor Geometry Check", vehicleCount ? clamp(vehicleCount / 3, 0.34, 0.94) : 0.88],
     ];
   }
   if (vehicleCount > 0) {
@@ -2350,6 +2438,7 @@ function renderStagedPacket() {
 function renderHardware(feed, hits) {
   const status = modeCopy();
   void status;
+  const rtDecision = feed.rtControl || planRtGeometryControl(feed, hits);
   const bvhMs = (rayPath === "cuda" ? 2.4 : 8.8) + hits.length * (rayPath === "cuda" ? 0.22 : 0.7);
   const unknowns = sceneClassTargets.filter((item) => item.type.startsWith("unknown"));
   const npuReady = feeds.filter((item) => item.npu).length;
@@ -2362,6 +2451,7 @@ function renderHardware(feed, hits) {
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
     ["Edge Compute", `${edgeComputeSummaryLabel()} · ${edgeComputeFreshnessLabel()}`, rayPath === "cuda" || edgeCompute?.npu?.ready ? "Good" : "Watch"],
+    ["RT Control", `${feed.callsign} ${displayCommand(rtDecision.command)} · ${rtDecision.shortLabel} · ${rtDecision.backend}`, rtDecision.priority === "Critical" ? "Watch" : "Good"],
     ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
     ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
@@ -2375,8 +2465,8 @@ function renderHardware(feed, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind.toLowerCase()}">${kind}</span></div>`,
     )
     .join("");
-  setText("#bvh-label", criticalHit ? "Corridor Blocked" : nearestHit ? "Corridor Monitoring" : "Corridor Guarded");
-  setText("#compute-label", edgeComputeSummaryLabel());
+  setText("#bvh-label", rtDecision.shortLabel);
+  setText("#compute-label", rayPath === "cuda" ? "Accelerated RT Control" : edgeComputeSummaryLabel());
   setText("#fusion-badge", `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
@@ -2469,6 +2559,7 @@ function renderSwarmC2() {
     const latClass = latencyClass(feed.latency);
     const latency = formatLatencyMs(feed.latency);
     const lastCmd = last ? `${displayCommand(last.command)} @ T+${last.ts.toFixed(0)}s` : "—";
+    const rtDecision = feed.rtControl || planRtGeometryControl(feed, bvhQuery(feed));
     const commands = ["patrol", "hold", "return", "resume"].map((cmd) => {
       const active = feed.command === cmd ? " active" : "";
       return `<button class="c2-mini${active}" data-drone="${feed.id}" data-cmd="${cmd}" title="Task ${feed.callsign} to ${cmd}">${cmd.slice(0, 2).toUpperCase()}</button>`;
@@ -2479,7 +2570,7 @@ function renderSwarmC2() {
         <span class="feed-latency compact ${latClass}">${latency}</span>
         <span class="c2-drone-cmd">${displayCommand(feed.command)} · ${Math.round(feed.battery)}% · ${formatMeters(feed.z)}</span>
       </div>
-      <div class="c2-drone-meta">Last: ${lastCmd}</div>
+      <div class="c2-drone-meta">Last: ${lastCmd} · RT: ${displayCommand(rtDecision.command)} ${rtDecision.shortLabel}</div>
       <div class="c2-mini-stack">${commands}</div>
     </div>`;
   }).join("");
@@ -2498,7 +2589,7 @@ function renderDeniedProof() {
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
-    { name: "Automatic Corridor Guard", status: "active", detail: `${geometryBackendLabel()} checks route hazards continuously` },
+    { name: "Automatic Corridor Guard", status: "active", detail: `${rtControlBackendLabel()} Controls Drone Standoff And Hold Decisions` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },

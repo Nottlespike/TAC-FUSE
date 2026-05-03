@@ -61,7 +61,8 @@ TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py --
 If the NPU check reports ready, regenerate the browser status artifact and use
 it as the local CV proof point for the onboard cue lane in the demo. If it is
 not ready, keep the demo on the denied-connectivity C2 path; the status card will
-show accelerated compute pending rather than overstating readiness.
+show validation RT control and mark the NPU as unverified rather than implying
+local C2 is waiting on hardware.
 
 ## Foundry Boundary
 

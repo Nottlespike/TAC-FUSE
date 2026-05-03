@@ -1,3 +1,6 @@
+import subprocess
+
+from tac_fuse import ray_query
 from tac_fuse.ray_query import BVHPrimitive, evaluate_bvh, inspect_ray_runtime
 from tac_fuse.replay import generate_scenario
 
@@ -14,6 +17,48 @@ def test_require_rtx_reports_unavailable_without_hard_failure() -> None:
 
     assert status.backend in {"rtx", "unavailable"}
     assert isinstance(status.reason, str)
+
+
+def test_nvidia_smi_rtx_target_selects_accelerated_backend(monkeypatch) -> None:
+    monkeypatch.setattr(ray_query, "_cuda_driver_bindings_available", lambda: False)
+    monkeypatch.setattr(ray_query.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["nvidia-smi"],
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 5070 Laptop GPU, 8151, 590.48.01\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(ray_query.subprocess, "run", fake_run)
+
+    status = inspect_ray_runtime(require_rtx=True)
+
+    assert status.backend == "rtx"
+    assert status.accelerated is True
+    assert "RTX 5070" in status.reason
+
+
+def test_nvidia_smi_low_memory_target_fails_required_rtx(monkeypatch) -> None:
+    monkeypatch.setattr(ray_query, "_cuda_driver_bindings_available", lambda: False)
+    monkeypatch.setattr(ray_query.shutil, "which", lambda name: "/usr/bin/nvidia-smi")
+
+    def fake_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            args=["nvidia-smi"],
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 3050 Laptop GPU, 4096, 555.01\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(ray_query.subprocess, "run", fake_run)
+
+    status = inspect_ray_runtime(require_rtx=True)
+
+    assert status.backend == "unavailable"
+    assert status.accelerated is False
+    assert "at least" in status.reason
 
 
 def test_bvh_cpu_and_rtx_result_shape_match() -> None:

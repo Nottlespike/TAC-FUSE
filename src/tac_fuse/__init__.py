@@ -78,6 +78,14 @@ from tac_fuse.replay import (
     demo_restricted_entries,
     generate_scenario,
 )
+from tac_fuse.rt_control import (
+    RTControlDecision,
+    RTControlPlan,
+    RTControlUnavailable,
+    backend_label,
+    issue_rt_control_plan,
+    plan_rt_control,
+)
 
 __all__ = [
     "AssetTrack",
@@ -112,6 +120,9 @@ __all__ = [
     "RayQueryStatus",
     "RestrictedEntry",
     "RouteConflict",
+    "RTControlDecision",
+    "RTControlPlan",
+    "RTControlUnavailable",
     "SeededReplayEngine",
     "SyncBoundaryViolation",
     "SyncGate",
@@ -122,6 +133,7 @@ __all__ = [
     "WORKLOAD_REGISTRY",
     "WorkloadClass",
     "assert_sync_allowed",
+    "backend_label",
     "build_foundry_export",
     "can_upload",
     "create_connectivity_controller",
@@ -134,7 +146,9 @@ __all__ = [
     "generate_scenario",
     "has_upload_credentials",
     "inspect_ray_runtime",
+    "issue_rt_control_plan",
     "issue_c2_command",
+    "plan_rt_control",
     "prepare_sync_payload",
     "project_tracks_to_pov",
     "render_svg_pov",

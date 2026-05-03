@@ -69,18 +69,23 @@ tasks:
     Make automatic route-guard pathing consume the same fused contacts and hazard volumes
     that the operator sees on the 3D Field C2 View. The corridor guard should score corridor edges, line of sight,
     RF-denial volumes, unknown contacts, standoff, battery, and latency. On Strix, use the
-    RTX ray-tracing/CUDA geometry lane for spatial-query acceleration when available.
-    Deterministic software validation must return the same route-decision shape for offline tests.
+    RTX ray-tracing/CUDA geometry lane for spatial-query acceleration and swarm-control
+    decisions when available. Deterministic software validation must return the same
+    route-decision shape for offline tests.
+
+    The geometry result should drive canonical local C2 commands for Alpha, Bravo,
+    Charlie, and Delta style assets, not just update a hardware badge.
 
     The UI should describe the automatic corridor state, such as Corridor Guarded or
     Corridor Blocked, instead of exposing a vague compute label or manual route button.
 
     Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior or interface changes.
-  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_ray_query.py -q && uv run python scripts/check_ray_runtime.py
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_ray_query.py tests/test_rt_control.py -q && uv run python scripts/check_ray_runtime.py
   metadata:
     alpha_gate: RTX Pathing
     workflow_stage: create
     rtx_pathing_required: true
+    rt_control_required: true
     software_validation_required: true
     strix_hardware_check: uv run python scripts/check_ray_runtime.py --require-rtx
 - name: tac-fuse-alpha-p0-npu-zero-shot-label-contract

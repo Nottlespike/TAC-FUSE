@@ -110,6 +110,8 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
     "cuda_route_optimization": (
         "route optimizer",
         "route optimization",
+        "rt control",
+        "geometry control",
         "candidate route",
         "cuda compute",
         "rtx bvh",
@@ -665,19 +667,21 @@ def default_backlog() -> list[TaskBlueprint]:
             name="tac-fuse-p1-cuda-route-optimizer",
             priority="P1",
             phase="create",
-            title="Use CUDA or RTX geometry for route optimization",
+            title="Use CUDA or RTX geometry for route optimization and control",
             focus="cuda_route_optimization",
             body=(
-                "Turn the ray-query lane into a route optimizer rather than a label. "
+                "Turn the ray-query lane into a route optimizer and control boundary rather "
+                "than a label. "
                 "Score candidate paths against corridor boundaries, unknown contacts, "
                 "RF-denial areas, line of sight, standoff, battery, and latency. Use "
                 "CUDA compute or an RTX geometry boundary on Strix when "
                 "available, with deterministic software validation returning the same "
-                "route decision in tests."
+                "route decision in tests. The result must drive canonical local C2 commands "
+                "for Alpha/Bravo/Charlie/Delta style assets, not just update a badge."
             ),
             verify_command=(
                 "cd contrib/TAC-FUSE && uv run pytest "
-                "tests/test_ray_query.py tests/test_route_optimizer.py -q"
+                "tests/test_ray_query.py tests/test_rt_control.py -q"
             ),
         ),
         TaskBlueprint(
@@ -855,7 +859,9 @@ Guardrails:
 - Visual work must use Playwright screenshots or assertions, including desktop and
   mobile when practical, to catch overlap, wasted panels, and unreadable labels.
 - CUDA/RTX work should improve route optimization or spatial query quality, not just
-  report a GPU badge. Software validation fixtures must keep automated tests deterministic.
+  report a GPU badge. When it touches swarm motion, it should drive canonical
+  Local C2 commands for the drones. Software validation fixtures must keep
+  automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
 - Rendered object work should use recognizable class instances such as a four-wheeled

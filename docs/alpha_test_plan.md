@@ -56,13 +56,15 @@ Pass criteria:
   unknown contacts, standoff, battery, and latency.
 - On Strix, RTX ray-tracing cores or CUDA geometry back the spatial-query
   path when available.
+- Geometry results drive canonical local C2 commands for Alpha, Bravo,
+  Charlie, and Delta style assets instead of only updating a hardware badge.
 - Deterministic software validation returns the same decision shape for offline tests.
 - The UI names the corridor state, not a vague compute stage or manual route action.
 
 Validation:
 
 ```bash
-uv run pytest tests/test_ray_query.py -q
+uv run pytest tests/test_ray_query.py tests/test_rt_control.py -q
 uv run python scripts/check_ray_runtime.py
 ```
 

@@ -38,6 +38,7 @@ def test_alpha_test_pack_points_at_real_local_validation() -> None:
     commands = "\n".join(task["verify_command"] for task in task_pack["tasks"])
 
     assert "tests/test_ray_query.py" in commands
+    assert "tests/test_rt_control.py" in commands
     assert "tests/test_zero_shot_vision.py" in commands
     assert "tests/test_npu_trainer_int8.py" in commands
     assert "npm run test:visual" in commands
@@ -48,6 +49,7 @@ def test_alpha_test_plan_names_handoff_artifact() -> None:
 
     assert "tasks/alpha_test_polish_tasks.yaml" in plan_text
     assert "RTX ray-tracing cores" in plan_text
+    assert "canonical local C2 commands" in plan_text
     assert "zero-shot labeler" in plan_text
     assert "trained classifiers" in plan_text
     assert "Automatic corridor guard" in plan_text

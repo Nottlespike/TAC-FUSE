@@ -117,7 +117,7 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator(".metric-strip")).toContainText("Sync");
   await expect(page.locator(".metric-strip")).toContainText("Guard");
   await expect(page.locator(".metric-strip")).toContainText("Edge Compute");
-  await expect(page.locator("#compute-label")).toContainText(/Accelerated|Edge NPU/);
+  await expect(page.locator("#compute-label")).toContainText(/Accelerated|Edge NPU|Validation RT/);
   await expect(page.locator(".metric-strip")).not.toContainText(/object pass|objects quantified|restricted object|CPU route check/i);
   await expect(page.locator("#replan-route")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText(/Route Solve|Replan Route/i);

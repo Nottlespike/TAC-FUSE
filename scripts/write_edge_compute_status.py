@@ -38,23 +38,21 @@ def _compute_mode(ray: dict[str, Any], npu: dict[str, Any]) -> str:
     if ray.get("accelerated"):
         return "accelerated_geometry"
     if npu.get("ready"):
-        return "edge_npu"
-    return "accelerated_compute_pending"
+        return "validation_geometry_npu"
+    return "validation_rt_control"
 
 
 def _labels(ray: dict[str, Any], npu: dict[str, Any]) -> dict[str, str]:
-    ray_label = (
-        "Accelerated Geometry" if ray.get("accelerated") else "Geometry Acceleration Pending"
-    )
-    npu_label = "Edge NPU Ready" if npu.get("ready") else "Edge NPU Pending"
+    ray_label = "Accelerated Geometry" if ray.get("accelerated") else "Validation Geometry"
+    npu_label = "Edge NPU Ready" if npu.get("ready") else "Edge NPU Unverified"
     if ray.get("accelerated") and npu.get("ready"):
         summary = "Accelerated Geometry + Edge NPU"
     elif ray.get("accelerated"):
         summary = "Accelerated Geometry"
     elif npu.get("ready"):
-        summary = "Edge NPU Ready"
+        summary = "Validation Geometry + Edge NPU"
     else:
-        summary = "Accelerated Compute Pending"
+        summary = "Validation RT Control"
     return {
         "backend_label": ray_label,
         "npu_label": npu_label,
@@ -73,7 +71,7 @@ def collect_status(
 
     ray = _to_dict(inspect_ray_runtime())
     if not ray.get("accelerated"):
-        ray = {**ray, "backend": "pending"}
+        ray = {**ray, "backend": "validation"}
     npu = _to_dict(IntelNPUSigLIP2Adapter(model_dir=model_dir, device=device).inspect_runtime())
     labels = _labels(ray, npu)
     compute_mode = _compute_mode(ray, npu)

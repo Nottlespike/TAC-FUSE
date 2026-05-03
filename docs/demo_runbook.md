@@ -66,7 +66,7 @@ For Strix remote checks, always use the same non-interactive SSH bootstrap
 (the current SSH alias is `gpu`):
 
 ```bash
-ssh gpu 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
+ssh strix 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
 ```
 
 ### 2.3 RTX Prerequisite Check Script
@@ -339,14 +339,14 @@ foundry_exports/
 | Foundry/Maven credentials absent | Export/stage locally; never block C2 |
 | Drone feed stale | Mark stale, retain last known state, keep operator controls active |
 | Map imagery missing | Use procedural/local fallback and preserve asset state |
-| Accelerator unavailable | Continue the C2 demo; mark accelerated compute pending |
+| Accelerator unavailable | Continue the C2 demo; show validation RT control and hardware unverified |
 
 ### 5.2 Optional Inference Fallback Ladder
 
 | Inference status | Action |
 |------------------|--------|
 | MPU/NPU/OpenVINO path available | Classify or prioritize visible objects locally |
-| Accelerator not detected | Use deterministic cue scoring and mark hardware pending |
+| Accelerator not detected | Use deterministic cue scoring and mark hardware unverified |
 | OpenVINO import fails | Skip scene classification; log warning; mission continues |
 | Model IR files missing | Use placeholder class label `"unknown"`; log warning |
 
@@ -371,7 +371,7 @@ def classify_scene(image_path: str) -> str:
 | GPU status | Action |
 |------------|--------|
 | NVIDIA RTX + CUDA available | Run spatial joins on GPU or equivalent accelerated geometry |
-| CUDA not available or `CUDA_VISIBLE_DEVICES=""` | Mark accelerated geometry pending |
+| CUDA not available or `CUDA_VISIBLE_DEVICES=""` | Use validation geometry with the same decision shape |
 | Software validation fails | Use deterministic in-memory checks from seeded engine |
 
 ```python
@@ -444,7 +444,7 @@ Each proof point is a discrete claim that can be verified live during the demo.
 | **PP-6** | Upload/sync is blocked in OFFLINE mode; bundle retained for later upload | Toggle OFFLINE, call upload/sync guard, confirm no HTTP request made; check export directory |
 | **PP-7** | Sensor and geometry processing produce local prioritized alerts | Show restricted-volume, stale-feed, route-conflict, or battery alerts from local state |
 | **PP-8** | Optional object classification degrades gracefully to `unknown` with no crash | Remove OpenVINO or model IR, call `classify_scene()`, confirm core C2 remains available |
-| **PP-9** | Spatial decisions retain shape without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run validation filter, confirm correct distances and hardware-pending status |
+| **PP-9** | Spatial decisions retain shape without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run validation filter, confirm correct distances and hardware-unverified status |
 | **PP-10** | Telemetry queue survives OFFLINE→ONLINE transitions | Queue 50 events in OFFLINE mode, toggle ONLINE, confirm queue flushes |
 
 ---
@@ -457,7 +457,7 @@ uv sync --extra dev
 uv run pytest -q
 uv run ruff check src tests
 # Hardware lane: check RTX if using accelerated geometry
-bash docs/check_rtx_prereqs.sh || echo "RTX not available — mark accelerated compute pending"
+bash docs/check_rtx_prereqs.sh || echo "RTX not available — using validation RT control"
 
 # Python demo loop
 uv run python - << 'EOF'

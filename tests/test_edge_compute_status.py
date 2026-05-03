@@ -90,7 +90,7 @@ def test_writer_emits_accelerated_edge_status(monkeypatch, tmp_path: Path) -> No
     assert payload["ui"]["compute_mode"] == "accelerated_geometry_npu"
 
 
-def test_writer_marks_accelerated_compute_pending_without_hardware(
+def test_writer_marks_validation_rt_control_without_hardware(
     monkeypatch, tmp_path: Path
 ) -> None:
     output = tmp_path / "edge_compute_status.js"
@@ -108,7 +108,7 @@ def test_writer_marks_accelerated_compute_pending_without_hardware(
         ),
     )
 
-    class PendingAdapter:
+    class UnverifiedAdapter:
         def __init__(self, *, model_dir: Path | None = None, device: str | None = None) -> None:
             self.model_dir = model_dir
             self.device = device
@@ -127,19 +127,19 @@ def test_writer_marks_accelerated_compute_pending_without_hardware(
                 }
             )
 
-    monkeypatch.setattr(edge_status, "IntelNPUSigLIP2Adapter", PendingAdapter)
+    monkeypatch.setattr(edge_status, "IntelNPUSigLIP2Adapter", UnverifiedAdapter)
 
     assert edge_status.main(["--output", str(output), "--device", "NPU"]) == 0
 
     payload = _payload_from_js(output)
     assert payload["ray"]["available"] is True
     assert payload["ray"]["accelerated"] is False
-    assert payload["ray"]["backend"] == "pending"
+    assert payload["ray"]["backend"] == "validation"
     assert payload["npu"]["ready"] is False
-    assert payload["ui"]["backend_label"] == "Geometry Acceleration Pending"
-    assert payload["ui"]["npu_label"] == "Edge NPU Pending"
-    assert payload["ui"]["summary_label"] == "Accelerated Compute Pending"
-    assert payload["ui"]["compute_mode"] == "accelerated_compute_pending"
+    assert payload["ui"]["backend_label"] == "Validation Geometry"
+    assert payload["ui"]["npu_label"] == "Edge NPU Unverified"
+    assert payload["ui"]["summary_label"] == "Validation RT Control"
+    assert payload["ui"]["compute_mode"] == "validation_rt_control"
 
 
 def test_checked_in_browser_status_is_parseable() -> None:
@@ -147,3 +147,4 @@ def test_checked_in_browser_status_is_parseable() -> None:
 
     assert payload["pipeline"]["generated_by"] == "scripts/write_edge_compute_status.py"
     assert payload["ui"]["route_guard_use_case"]
+    assert "Pending" not in payload["ui"]["summary_label"]

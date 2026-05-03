@@ -21,16 +21,16 @@ window.TAC_FUSE_EDGE_COMPUTE = {
   "ray": {
     "accelerated": false,
     "available": true,
-    "backend": "pending",
-    "reason": "checked-in fallback; accelerated geometry has not been verified"
+    "backend": "validation",
+    "reason": "checked-in fallback; validation geometry is active until Strix acceleration is verified"
   },
   "source": "checked_in_fallback",
   "ui": {
-    "backend_label": "Geometry Acceleration Pending",
-    "compute_mode": "accelerated_compute_pending",
-    "npu_label": "Edge NPU Pending",
+    "backend_label": "Validation Geometry",
+    "compute_mode": "validation_rt_control",
+    "npu_label": "Edge NPU Unverified",
     "route_guard_use_case": "Automatic corridor geometry and local cue classification",
     "stale_after_seconds": 300,
-    "summary_label": "Accelerated Compute Pending"
+    "summary_label": "Validation RT Control"
   }
 };
