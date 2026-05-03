@@ -389,8 +389,9 @@ body {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     background: #0c1113;
-    gap: 12px;
+    gap: 8px;
     overflow: hidden;
+    padding: 12px 16px;
 }
 
 .workspace > .view-pane:not(.active) {

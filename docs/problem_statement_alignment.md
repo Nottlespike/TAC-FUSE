@@ -43,10 +43,10 @@ useful, but they are not the application's center of gravity.
 
 Object detection should appear as a proof point only after the local C2 loop is
 working: "once identifiable objects or unknown contacts exist in the feed, each
-edge device can classify or prioritize them locally." Strix is the hard-readiness
-supporting proof rig for this distributed NPU lane, not a required gate. If
-inference fails, the operator must still retain C2, map context, tasking, logs,
-and sync queue continuity.
+edge device can classify or prioritize them locally." The hardware-readiness
+proof is a supporting lane for this distributed NPU concept, not a required
+gate. If inference fails, the operator must still retain C2, map context,
+tasking, logs, and sync queue continuity.
 
 ## Non-Goals
 

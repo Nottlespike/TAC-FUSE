@@ -27,7 +27,7 @@ The primary capability is not object detection. The primary capability is resili
                │                       │
     ┌──────────▼───────┐  ┌────────────▼──────────┐
     │SeededReplayEngine│  │ Sensor + geometry cues │
-    │ (drone scenario) │  │  CPU / RTX / optional  │
+    │ (drone scenario) │  │ RTX / NPU / validation │
     └──────────────────┘  └───────────────────────┘
                │
     ┌──────────▼───────────┐
@@ -45,7 +45,7 @@ The primary capability is not object detection. The primary capability is resili
 
 | Check | Requirement | Verification command |
 |-------|-------------|----------------------|
-| CPU | Any x86-64; fallback always works | `uv run python -c "import sys; print(sys.executable)"` |
+| Runtime | Python 3.12+ software validation path | `uv run python -c "import sys; print(sys.executable)"` |
 | Edge kit | Hardened laptop or backpack-class compute kit with local power | Show the laptop running the dashboard with network disabled |
 | Optional MPU/NPU | On-device inference path only; not required for C2 | `uv run python scripts/check_npu_runtime.py` |
 | Optional NVIDIA RTX | CUDA 12.x, driver ≥ 535; acceleration only | `nvidia-smi --query-gpu=name,driver_version --format=csv` |
@@ -62,10 +62,10 @@ The primary capability is not object detection. The primary capability is resili
 | Tests pass | Full offline test suite | `uv run pytest -q` |
 | Lint clean | `ruff check src tests` | `uv run ruff check src tests` |
 
-For Strix remote checks, always use the same non-interactive SSH bootstrap:
+For remote hardware checks, always use the same non-interactive SSH bootstrap:
 
 ```bash
-ssh strix 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
+ssh gpu 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_edge_compute_bringup.sh'
 ```
 
 ### 2.3 RTX Prerequisite Check Script
@@ -98,11 +98,11 @@ echo "[OK]   Driver version: $CUDA_VER"
 GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)
 echo "[OK]   GPU: $GPU_NAME"
 
-# 5. Python CUDA bindings (optional — will use CPU fallback if absent)
+# 5. Python CUDA bindings
 if uv run python -c "import torch; print(torch.cuda.is_available())" 2>/dev/null; then
     echo "[OK]   PyTorch CUDA available"
 else
-    echo "[WARN] PyTorch CUDA not available — will fall back to CPU spatial"
+    echo "[FAIL] PyTorch CUDA not available — accelerated geometry is not ready"
 fi
 
 echo ""
@@ -112,7 +112,7 @@ echo "Any [FAIL] — invoke fallback ladder before starting."
 ```
 
 Run with: `bash docs/check_rtx_prereqs.sh`. It now fails if `uv` is not on
-PATH, if the GPU is below the Strix 8 GB class, or if the TAC-FUSE RTX runtime
+PATH, if the GPU is below the 8 GB target, or if the TAC-FUSE RTX runtime
 boundary cannot use CUDA/RTX.
 
 ---
@@ -136,8 +136,8 @@ uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
 # 3. Lint check
 uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
 
-# 4. Strix hard-readiness lane
-bash scripts/check_strix_bringup.sh
+# 4. Accelerated edge-compute readiness lane
+bash scripts/check_edge_compute_bringup.sh
 ```
 
 ### 3.2 Phase 1 — Core State Initialization (2–3 min)
@@ -338,14 +338,14 @@ foundry_exports/
 | Foundry/Maven credentials absent | Export/stage locally; never block C2 |
 | Drone feed stale | Mark stale, retain last known state, keep operator controls active |
 | Map imagery missing | Use procedural/local fallback and preserve asset state |
-| Accelerator unavailable | Continue with CPU/local deterministic paths |
+| Accelerator unavailable | Continue the C2 demo; mark accelerated compute pending |
 
 ### 5.2 Optional Inference Fallback Ladder
 
 | Inference status | Action |
 |------------------|--------|
 | MPU/NPU/OpenVINO path available | Classify or prioritize visible objects locally |
-| Accelerator not detected | Use CPU or deterministic cue scoring |
+| Accelerator not detected | Use deterministic cue scoring and mark hardware pending |
 | OpenVINO import fails | Skip scene classification; log warning; mission continues |
 | Model IR files missing | Use placeholder class label `"unknown"`; log warning |
 
@@ -369,16 +369,16 @@ def classify_scene(image_path: str) -> str:
 
 | GPU status | Action |
 |------------|--------|
-| NVIDIA RTX + CUDA available | Run spatial joins on GPU (cuSpatial or equivalent) |
-| CUDA not available or `CUDA_VISIBLE_DEVICES=""` | Fall back to CPU (`tac_fuse.spatial_cpu`) |
-| CPU spatial also fails | Use deterministic in-memory checks from seeded engine |
+| NVIDIA RTX + CUDA available | Run spatial joins on GPU or equivalent accelerated geometry |
+| CUDA not available or `CUDA_VISIBLE_DEVICES=""` | Mark accelerated geometry pending |
+| Software validation fails | Use deterministic in-memory checks from seeded engine |
 
 ```python
-# src/tac_fuse/spatial_cpu.py (mandatory fallback)
+# src/tac_fuse/spatial_validation.py (conceptual validation path)
 import math
 
 def haversine_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Mandatory CPU fallback. Always available."""
+    """Deterministic validation geometry."""
     R = 6_371_000.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -387,11 +387,12 @@ def haversine_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> 
     return R * 2.0 * math.asin(math.sqrt(hav))
 
 def filter_tracks_in_radius(tracks, center_lat, center_lon, radius_m):
-    """Always available CPU spatial filter."""
+    """Deterministic local spatial filter."""
     return [t for t in tracks if haversine_distance_m(t.lat, t.lon, center_lat, center_lon) <= radius_m]
 ```
 
-**Proof point 6:** All spatial operations work with CPU fallback. RTX is an optimization, not a requirement.
+**Proof point 6:** Spatial decisions preserve their result shape in validation,
+and accelerated geometry is called out as a hardware-readiness lane.
 
 ### 5.4 Dashboard / Web UI Fallback
 
@@ -442,7 +443,7 @@ Each proof point is a discrete claim that can be verified live during the demo.
 | **PP-6** | Upload/sync is blocked in OFFLINE mode; bundle retained for later upload | Toggle OFFLINE, call upload/sync guard, confirm no HTTP request made; check export directory |
 | **PP-7** | Sensor and geometry processing produce local prioritized alerts | Show restricted-volume, stale-feed, route-conflict, or battery alerts from local state |
 | **PP-8** | Optional object classification degrades gracefully to `unknown` with no crash | Remove OpenVINO or model IR, call `classify_scene()`, confirm core C2 remains available |
-| **PP-9** | Spatial operations work on CPU without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run spatial filter, confirm correct distances |
+| **PP-9** | Spatial decisions retain shape without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run validation filter, confirm correct distances and hardware-pending status |
 | **PP-10** | Telemetry queue survives OFFLINE→ONLINE transitions | Queue 50 events in OFFLINE mode, toggle ONLINE, confirm queue flushes |
 
 ---
@@ -454,8 +455,8 @@ Each proof point is a discrete claim that can be verified live during the demo.
 uv sync --extra dev
 uv run pytest -q
 uv run ruff check src tests
-# Optional: check RTX if using GPU acceleration
-bash docs/check_rtx_prereqs.sh || echo "RTX not available — demo continues on CPU fallback"
+# Hardware lane: check RTX if using accelerated geometry
+bash docs/check_rtx_prereqs.sh || echo "RTX not available — mark accelerated compute pending"
 
 # Python demo loop
 uv run python - << 'EOF'

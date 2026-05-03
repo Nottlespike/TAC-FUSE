@@ -1,9 +1,9 @@
-"""Local BVH/ray-query boundary for TAC-FUSE field geometry checks.
+"""Local ray-query boundary for TAC-FUSE field geometry checks.
 
-The CPU parity path is the default and provides full offline functionality.
-RTX/CUDA acceleration is optional: when available it reduces latency for
-spatial queries, but it is never required for C2 continuity, route guarding,
-or hazard avoidance.
+The software validation path keeps automated tests deterministic. RTX/CUDA
+acceleration is the hardware lane: when available it reduces latency for
+spatial queries, but local C2 continuity, route guarding, and hazard avoidance
+retain the same result shape.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from tac_fuse.replay import AssetTrack
 
 @dataclass(frozen=True)
 class BVHPrimitive:
-    """Simple 2D hazard volume used by the CPU parity path."""
+    """Simple 2D hazard volume used by the software validation path."""
 
     primitive_id: str
     label: str
@@ -34,9 +34,9 @@ class BVHPrimitive:
 class RayQueryStatus:
     """Runtime status for the ray-query boundary.
 
-    The CPU parity path is always available; RTX/CUDA is an optional
-    acceleration layer that improves latency when hardware and drivers
-    are present.
+    The software validation path is always available; RTX/CUDA is an
+    acceleration layer that improves latency when hardware and drivers are
+    present.
     """
 
     backend: str
@@ -89,7 +89,7 @@ def inspect_ray_runtime(*, require_rtx: bool = False) -> RayQueryStatus:
             backend="cpu_parity",
             available=True,
             accelerated=False,
-            reason="using CPU BVH parity path",
+            reason="using deterministic software validation path",
         )
 
 

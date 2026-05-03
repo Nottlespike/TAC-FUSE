@@ -134,6 +134,7 @@ def test_writer_marks_accelerated_compute_pending_without_hardware(
     payload = _payload_from_js(output)
     assert payload["ray"]["available"] is True
     assert payload["ray"]["accelerated"] is False
+    assert payload["ray"]["backend"] == "pending"
     assert payload["npu"]["ready"] is False
     assert payload["ui"]["backend_label"] == "Geometry Acceleration Pending"
     assert payload["ui"]["npu_label"] == "Edge NPU Pending"

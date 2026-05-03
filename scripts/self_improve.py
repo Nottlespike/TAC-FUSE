@@ -790,7 +790,8 @@ def default_backlog() -> list[TaskBlueprint]:
             focus="power_latency_posture",
             body=(
                 "Add a lightweight operator-facing or runbook-visible power/latency posture: "
-                "bounded local workloads, CPU fallback, battery/backpack assumptions, and "
+                "bounded local workloads, software validation fallback, battery/backpack "
+                "assumptions, and "
                 "what work is safe to run during denied connectivity. Avoid model benchmark "
                 "charts as the center of the demo."
             ),

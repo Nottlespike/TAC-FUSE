@@ -2623,7 +2623,7 @@ function renderPosturePanel() {
   setText("#posture-runtime", `${Math.round(posture.runtimeMin)} min`);
   setText("#posture-tier", displayTier(posture.tier).toUpperCase());
   setText("#posture-thermal", posture.thermal.charAt(0).toUpperCase() + posture.thermal.slice(1));
-  setText("#posture-fallback", posture.tier !== "minimal" ? "CPU" : "Limited");
+  setText("#posture-fallback", posture.tier !== "minimal" ? "Software" : "Limited");
   // Battery bar
   const bar = document.getElementById("posture-battery-bar");
   if (bar) {

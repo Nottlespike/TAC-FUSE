@@ -43,7 +43,9 @@ def _compute_mode(ray: dict[str, Any], npu: dict[str, Any]) -> str:
 
 
 def _labels(ray: dict[str, Any], npu: dict[str, Any]) -> dict[str, str]:
-    ray_label = "Accelerated Geometry" if ray.get("accelerated") else "Geometry Acceleration Pending"
+    ray_label = (
+        "Accelerated Geometry" if ray.get("accelerated") else "Geometry Acceleration Pending"
+    )
     npu_label = "Edge NPU Ready" if npu.get("ready") else "Edge NPU Pending"
     if ray.get("accelerated") and npu.get("ready"):
         summary = "Accelerated Geometry + Edge NPU"
@@ -70,6 +72,8 @@ def collect_status(
     """Collect local runtime status for display in the browser demo."""
 
     ray = _to_dict(inspect_ray_runtime())
+    if not ray.get("accelerated"):
+        ray = {**ray, "backend": "pending"}
     npu = _to_dict(IntelNPUSigLIP2Adapter(model_dir=model_dir, device=device).inspect_runtime())
     labels = _labels(ray, npu)
     compute_mode = _compute_mode(ray, npu)
