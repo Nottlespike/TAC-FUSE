@@ -116,7 +116,9 @@ test("operator surface is dense and the selected platform is animated", async ({
   await expect(page.locator("#incident-strip")).toContainText("Incident Watch Armed");
   await expect(page.locator("#incident-strip")).not.toContainText("T+32");
   await expect(page.locator("#incident-strip")).toContainText("Model ID:");
+  await expect(page.locator("#incident-strip")).toContainText("tac-fuse-siglp");
   await expect(page.locator(".model-identification").first()).toContainText("Model ID:");
+  await expect(page.locator(".model-identification").first()).toContainText("tac-fuse-siglp");
   await expect(page.locator(".metric-strip")).toContainText("Power");
   await expect(page.locator(".metric-strip")).toContainText("Sync");
   await expect(page.locator(".metric-strip")).toContainText("Guard");

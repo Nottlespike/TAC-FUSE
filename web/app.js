@@ -535,7 +535,8 @@ function classifierCueDetail() {
 function classifierCueModelId() {
   const cue = classifierCueClassification();
   if (!cue) return "No Model";
-  return String(cue.model_id || classifierCue?.runtime?.model_id || "SigLIP2");
+  const modelId = String(cue.model_id || classifierCue?.runtime?.model_id || "tac-fuse-siglp");
+  return modelId === "google/siglip2-base-patch16-224" ? "tac-fuse-siglp" : modelId;
 }
 
 function classifierIdentificationCopy() {

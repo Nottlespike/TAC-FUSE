@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Browser classifier cue now displays the field-facing `tac-fuse-siglp` model
+  label instead of exposing the upstream Google SigLIP2 model ID in the UI.
+
 ### Added
 - RT geometry control boundary (`tac_fuse.rt_control`) that turns ray-query
   results into canonical local C2 commands for Alpha/Bravo/Charlie/Delta style
