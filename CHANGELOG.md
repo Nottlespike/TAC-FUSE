@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite for the offline fusion spool (29 tests) covering schema init, WAL mode, event append/idempotency, JSONL health stats, corruption-tolerant reads, snapshot intervals, watermarks, receipt tracking, pending events, replay-to-target, redacted inspection, concurrent reads, and custom timestamps/keys.
 - Test `test_single_operator_swarm_control_offline()` proving the full denied-operations workflow: a single operator tasks 4 drones, retasks mid-mission while offline, issues emergency abort, verifies complete proof chain, exports deterministically from local state, and confirms all sync entries remain pending (enterprise sync blocked until ONLINE).
 - Playwright visual test verifying offline swarm control: commands issue while offline, sync gate holds staged packets, degraded mode transitions correctly, and the operator surface remains functional without connectivity.
+- SigLIP2 INT8/OpenVINO NPU training scaffold, Hugging Face-native QAT dataset
+  registry, and zero-shot image-text frame classification helpers.
+- Zero-shot pseudo-classification SensorEvent output for `NPU_VISION` that keeps
+  scene labels separate from object detections unless explicitly opted in.
+- Pseudo-classification alert routing for tagathon workflows as low-priority
+  scene context rather than a bounding-box detection claim.
 
 ### Changed
 - Made the dashboard explicitly state the Problem Statement 2 route-guard

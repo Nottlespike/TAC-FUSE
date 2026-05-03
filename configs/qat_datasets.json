@@ -1,0 +1,63 @@
+{
+  "policy": {
+    "prefer_huggingface_native": true,
+    "dota_optional": true,
+    "primary_use": "SigLIP2 INT8 calibration and NNCF QAT for TAC-FUSE real-time sensor fusion vision",
+    "scope": "optional — accelerator training only, not required for core C2 operation"
+  },
+  "datasets": [
+    {
+      "name": "VisDrone2019-DET",
+      "priority": 1,
+      "task": "object_detection",
+      "hf_repo": "Voxel51/VisDrone2019-DET",
+      "hf_url": "https://huggingface.co/datasets/Voxel51/VisDrone2019-DET",
+      "splits": ["train"],
+      "rows": 8630,
+      "hf_native": true,
+      "required": true,
+      "license": "cc-by-sa-3.0",
+      "rationale": "Primary drone-view object detection corpus for people, vehicles, and traffic objects in aerial imagery."
+    },
+    {
+      "name": "DroneVehicle",
+      "priority": 1,
+      "task": "object_detection",
+      "hf_repo": "McCheng/DroneVehicle",
+      "hf_url": "https://huggingface.co/datasets/McCheng/DroneVehicle",
+      "splits": ["train", "validation", "test"],
+      "rows": null,
+      "hf_native": true,
+      "required": true,
+      "license": null,
+      "rationale": "Drone-mounted RGB/infrared vehicle detection data for command-and-control asset identification.",
+      "notes": "HF dataset page is available, but full Dataset Viewer currently reports preview-only behavior."
+    },
+    {
+      "name": "Drone Detection Dataset",
+      "priority": 2,
+      "task": "drone_detection",
+      "hf_repo": "pathikg/drone-detection-dataset",
+      "hf_url": "https://huggingface.co/datasets/pathikg/drone-detection-dataset",
+      "splits": ["train", "test"],
+      "rows": 54071,
+      "hf_native": true,
+      "required": false,
+      "license": "mit",
+      "rationale": "Supplemental COCO-style drone bounding boxes for positive drone detection and classifier calibration."
+    },
+    {
+      "name": "DOTA",
+      "priority": 4,
+      "task": "oriented_object_detection",
+      "hf_repo": null,
+      "hf_url": null,
+      "splits": [],
+      "rows": null,
+      "hf_native": false,
+      "required": false,
+      "license": null,
+      "rationale": "Optional oriented-box aerial benchmark; use only if HF-native datasets overfit quickly."
+    }
+  ]
+}

@@ -31,11 +31,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 # Ensure tac_fuse is importable
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 
-from tac_fuse.assets import AssetCatalog, VisualAsset, load_catalog
+from tac_fuse.assets import AssetCatalog
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -162,7 +163,10 @@ def _validate(
     issues: list[str] = []
     if result["remote_only"]:
         ids = ", ".join(result["remote_only"])
-        issues.append(f"  [remote_only] {len(result['remote_only'])} asset(s) have non-null source_url: {ids}")
+        issues.append(
+            "  [remote_only] "
+            f"{len(result['remote_only'])} asset(s) have non-null source_url: {ids}"
+        )
 
     if not dry_run and result["missing"]:
         ids = ", ".join(result["missing"])

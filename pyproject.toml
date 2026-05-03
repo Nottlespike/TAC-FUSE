@@ -14,12 +14,25 @@ dependencies = ["pydantic>=2.10", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "ruff>=0.8"]
+npu-runtime = [
+  "numpy>=1.26",
+  "openvino>=2025.0",
+  "pillow>=10.4",
+  "sentencepiece>=0.2",
+  "transformers>=4.53",
+]
 npu = [
+  "numpy>=1.26",
   "openvino>=2025.0",
   "optimum-intel>=1.23",
   "pillow>=10.4",
+  "sentencepiece>=0.2",
   "transformers>=4.53",
 ]
+
+[project.scripts]
+tac-fuse-npu-trainer = "tac_fuse.npu_trainer:main"
+tac-fuse-zero-shot = "tac_fuse.vision.zero_shot:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tac_fuse"]

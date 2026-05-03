@@ -183,6 +183,61 @@ class TestVideoCueAlerts:
         assert alerts[0].severity == AlertSeverity.MEDIUM.value
 
 
+class TestPseudoClassificationAlerts:
+    """Tests for zero-shot pseudo-classification context alerts."""
+
+    def test_pseudo_classification_is_silent_by_default(self) -> None:
+        engine = AlertingEngine()
+        event = make_sensor_event(
+            source="npu_vision",
+            source_id="siglip2_zero_shot",
+            payload={
+                "asset_id": "uav-alpha",
+                "classification_mode": "pseudo",
+                "pseudo_classification": {
+                    "label": "landing zone",
+                    "prompt": "a landing zone",
+                    "score": 0.91,
+                    "logit": 5.0,
+                },
+                "data": {"candidates": []},
+            },
+            confidence=0.91,
+        )
+
+        assert engine.process_event(event) == []
+
+    def test_pseudo_classification_alert_is_context_not_detection(self) -> None:
+        engine = AlertingEngine()
+        event = make_sensor_event(
+            source="npu_vision",
+            source_id="siglip2_zero_shot",
+            payload={
+                "asset_id": "uav-alpha",
+                "frame_path": "/tmp/frame.jpg",
+                "classification_mode": "pseudo",
+                "pseudo_classification_alert": True,
+                "pseudo_classification_alert_floor": 0.8,
+                "pseudo_classification": {
+                    "label": "landing zone",
+                    "prompt": "a landing zone",
+                    "score": 0.91,
+                    "logit": 5.0,
+                },
+                "data": {"detections": [], "candidates": []},
+            },
+            confidence=0.91,
+        )
+
+        alerts = engine.process_event(event)
+
+        assert len(alerts) == 1
+        assert alerts[0].alert_type == AlertType.PSEUDO_CLASSIFICATION.value
+        assert alerts[0].severity == AlertSeverity.LOW.value
+        assert alerts[0].payload["label"] == "landing zone"
+        assert alerts[0].payload["frame_path"] == "/tmp/frame.jpg"
+
+
 class TestRFCueAlerts:
     """Tests for RF/thermal cue alerts."""
 

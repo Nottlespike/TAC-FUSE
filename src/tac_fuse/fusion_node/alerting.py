@@ -54,6 +54,7 @@ class AlertType(Enum):
     CONFIDENCE_DROP = "confidence_drop"  # Track quality degraded
     SENSOR_DEGRADED = "sensor_degraded"  # Environmental degradation
     DROPPED_FRAME = "dropped_frame"  # Frame loss detected
+    PSEUDO_CLASSIFICATION = "pseudo_classification"  # Zero-shot scene context
 
 
 @dataclass(frozen=True)
@@ -359,6 +360,27 @@ class AlertingEngine:
                 self._record_dedup(dedup_key)
 
         # Check for video cues (object detections) — optional, not center of work
+        if payload.get("pseudo_classification_alert"):
+            pseudo = payload.get("pseudo_classification")
+            if isinstance(pseudo, dict):
+                label = pseudo.get("label")
+                score = float(pseudo.get("score", event.confidence))
+                floor = float(payload.get("pseudo_classification_alert_floor", 0.0))
+                if isinstance(label, str) and label and score >= floor:
+                    dedup_key = f"pseudo:{asset_id or 'unknown'}:{sensor_id}:{label}"
+                    if not self._is_duplicate(dedup_key):
+                        triggered.append(
+                            self._create_pseudo_classification_alert(
+                                asset_id,
+                                sensor_id,
+                                label,
+                                score,
+                                event,
+                            )
+                        )
+                        self._record_dedup(dedup_key)
+
+        # Check for video cues (object detections) — optional, not center of work
         detections = payload.get("data", {}).get("detections", [])
         if detections:
             dedup_key = f"video_cue:{asset_id or 'unknown'}:{sensor_id}"
@@ -585,6 +607,36 @@ class AlertingEngine:
                 "detection_count": len(detections),
                 "detections": detections,
                 "event_confidence": event.confidence,
+            },
+        )
+
+    def _create_pseudo_classification_alert(
+        self,
+        asset_id: str | None,
+        sensor_id: str | None,
+        label: str,
+        score: float,
+        event: SensorEvent,
+    ) -> OperatorAlert:
+        return OperatorAlert(
+            alert_id=str(uuid.uuid4()),
+            alert_type=AlertType.PSEUDO_CLASSIFICATION.value,
+            severity=AlertSeverity.LOW.value,
+            message=(
+                f"Pseudo classification: {label} "
+                f"(score: {score:.2f}); confirm visually before acting"
+            ),
+            asset_id=asset_id,
+            sensor_id=sensor_id,
+            timestamp=self._utc_now(),
+            payload={
+                "label": label,
+                "score": score,
+                "event_id": event.event_id,
+                "source": event.source,
+                "frame_path": event.payload.get("frame_path"),
+                "classification_mode": event.payload.get("classification_mode"),
+                "candidates": event.payload.get("data", {}).get("candidates", []),
             },
         )
 

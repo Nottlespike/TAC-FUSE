@@ -156,7 +156,7 @@ class IntelNPUSigLIP2Adapter:
         return (
             "Export a fine-tuned SigLIP2 checkpoint to OpenVINO IR before the demo:\n"
             f"  optimum-cli export openvino --model {MODEL_ID} "
-            "--task zero-shot-image-classification --weight-format fp16 "
+            "--task zero-shot-image-classification --weight-format int8 "
             f"{DEFAULT_MODEL_DIR}\n"
             f"Then set {MODEL_DIR_ENV}={DEFAULT_MODEL_DIR} and {DEVICE_ENV}=NPU."
         )
