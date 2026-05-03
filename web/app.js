@@ -43,12 +43,6 @@ const ROUTE_GUARD_PATH = [
   { x: 950, y: 535 },
   { x: 1138, y: 450 },
 ];
-const ROUTE_GUARD_SCENARIO = {
-  title: "Denied Route Guard",
-  mission: "Route Guard Live",
-  summary: "Internet Lost · Command Reachback Lost · Local Authority Holds",
-  cvLane: "Device NPU Cues · Alpha/Bravo/Charlie/Delta",
-};
 // Contributor feeds to the fusion node - each has freshness/confidence/latency
 const feeds = [
   {
@@ -272,7 +266,6 @@ const sceneClassTargets = [
 ];
 
 let selectedId = "uav-alpha";
-let activeView = "field";
 let connectivityMode = "offline";
 let rayPath = "cuda";
 let simPaused = false;
@@ -699,10 +692,10 @@ function stepSimulation(dt) {
       continue;
     }
 
-    if (feed.command === "patrol" || feed.command === "relay" || feed.command === "overwatch") {
+    if (feed.command === "patrol" || feed.command === "relay" || feed.command === "overwatch" || feed.command === "scout") {
       feed.orbitPhase += dt * 0.22;
       const center = feed.target;
-      const radius = feed.command === "relay" ? 230 : feed.command === "overwatch" ? 150 : 180;
+      const radius = feed.command === "relay" ? 230 : feed.command === "overwatch" ? 150 : feed.command === "scout" ? 95 : 180;
       feed.target = {
         x: center.x + Math.cos(feed.orbitPhase) * radius * 0.012,
         y: center.y + Math.sin(feed.orbitPhase) * radius * 0.012,
@@ -1506,20 +1499,69 @@ function drawAsset(ctx, asset, width, height) {
   const { x, y } = worldToCanvas(asset, width, height);
   const color = colors[asset.key] || "#f2efe5";
   const selected = asset.id === selectedId;
-  ctx.fillStyle = color;
-  ctx.strokeStyle = selected ? "#f2efe5" : "#10171b";
-  ctx.lineWidth = selected ? 3 : 2;
-  ctx.beginPath();
-  if (asset.type === "ground") {
-    ctx.rect(x - 8, y - 5, 16, 10);
-  } else {
-    ctx.arc(x, y, selected ? 10 : 7, 0, Math.PI * 2);
+  ctx.save();
+  if (selected) {
+    ctx.strokeStyle = "rgba(245, 241, 232, 0.82)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 5]);
+    ctx.strokeRect(x - 18, y - 18, 36, 36);
+    ctx.setLineDash([]);
   }
-  ctx.fill();
-  ctx.stroke();
+  drawPlatformGlyph(ctx, x, y, asset, color, selected);
   ctx.fillStyle = "#f2efe5";
   ctx.font = "12px Inter, Arial";
   ctx.fillText(asset.callsign, x + 12, y + 4);
+  ctx.restore();
+}
+
+function drawPlatformGlyph(ctx, x, y, asset, color, selected = false) {
+  const heading = ((asset.heading || 0) * Math.PI) / 180;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(heading);
+  ctx.fillStyle = color;
+  ctx.strokeStyle = selected ? "#f2efe5" : "rgba(8, 13, 15, 0.94)";
+  ctx.lineWidth = selected ? 2.2 : 1.6;
+
+  if (asset.type === "fixed-wing") {
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-10, -8);
+    ctx.lineTo(-5, 0);
+    ctx.lineTo(-10, 8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (asset.type === "ground") {
+    ctx.beginPath();
+    ctx.rect(-10, -6, 20, 12);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(-12, 0);
+    ctx.lineTo(12, 0);
+    ctx.moveTo(0, -12);
+    ctx.lineTo(0, 12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(6, 0);
+    ctx.lineTo(0, 6);
+    ctx.lineTo(-6, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    for (const tick of [-12, 12]) {
+      ctx.beginPath();
+      ctx.moveTo(tick, -4);
+      ctx.lineTo(tick, 4);
+      ctx.moveTo(-4, tick);
+      ctx.lineTo(4, tick);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
 }
 
 function drawFieldContact(ctx, contact, width, height) {
@@ -1905,6 +1947,8 @@ function drawPovObjectMarker(obj) {
   povCtx.lineWidth = critical ? 3 : 2;
   if (obj.type === "vehicle") {
     drawWheeledVehicleGlyph(povCtx, obj.air.x, obj.air.y, obj.heading || 0, 0.88);
+  } else if (["fixed-wing", "quadrotor", "ground"].includes(obj.type)) {
+    drawPlatformGlyph(povCtx, obj.air.x, obj.air.y, obj, color, obj.id === selectedId);
   } else {
     povCtx.beginPath();
     if (obj.type === "unknown-contact") {
@@ -2548,7 +2592,6 @@ function cycleSelected(offset) {
 }
 
 function setActiveView(view) {
-  activeView = view;
   document.querySelectorAll(".view-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
   });

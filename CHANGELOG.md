@@ -69,6 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split the browser demo into Field C2 and Overview tabs so the 3D working view
   and 2D AOI map no longer compete on the same screen; removed the bulky
   evidence-card overlay from the live operator map.
+- Replaced generic friendly-node circles with platform-specific glyphs and gave
+  scout-tasked drones an on-station movement pattern so a hovering platform
+  reads as intentional field behavior.
 - Added shared friendly identity handling in the field view so Alpha, Bravo,
   Charlie, Delta, and Team 1 remain known friendly tracks across edge-node
   perspectives instead of being reclassified as unknown detector objects.

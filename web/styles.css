@@ -1291,11 +1291,6 @@ canvas {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .mission-evidence {
-        grid-template-columns: 1fr 1fr;
-        position: absolute;
-    }
-
     .command-panel {
         grid-template-columns: 1fr;
     }
