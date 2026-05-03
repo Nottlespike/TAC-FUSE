@@ -1,6 +1,6 @@
 metadata:
   generated_by: contrib/TAC-FUSE/scripts/self_improve.py
-  generated_at: '2026-05-03T10:28:52.189078+00:00'
+  generated_at: '2026-05-03T10:34:59.781913+00:00'
   problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
   scope: contrib/TAC-FUSE/
   workflow_order:
@@ -14,7 +14,7 @@ metadata:
   - Drone coordination
   - Sensor fusion and alerting
   - Functional Redis/embedding/track runtime
-  - Accelerated edge compute bring-up
+  - Strix accelerated compute bring-up
   - CUDA route optimization
   - Scenario portfolio
   - Playwright visual polish
@@ -22,7 +22,7 @@ metadata:
   - Rendered object training view
   - Power/latency posture
   - Enterprise sync boundary
-  alignment_findings: 0
+  alignment_findings: 1
   scenario_portfolio:
   - Route Guard
   - Convoy Overwatch
@@ -44,7 +44,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Explore\n\nTask: Make local C2 state writes\
     \ the first-class proof path\n\nAudit the operator-command path and make sure every tasking or retasking\
@@ -61,9 +61,9 @@ tasks:
     \ instances such as a four-wheeled\n  vehicle silhouette, and aerial contacts should enter from the\
     \ AOI edge instead of\n  popping into the middle of the workspace.\n- Core CI behavior must remain\
     \ offline-testable and must not require Foundry, Maven,\n  internet, Hugging Face downloads, RTX hardware,\
-    \ or an Intel NPU.\n- Hardware bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
-    \  the exported NPU model, Redis, and actual edge hardware, and should fail\n  clearly when one of\
-    \ those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ or an Intel NPU.\n- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
+    \  the exported NPU model, Redis, and the actual Strix hardware, and should fail\n  clearly when one\
+    \ of those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
     \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
   verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_mission_state.py tests/test_connectivity.py
     -q
@@ -78,7 +78,7 @@ tasks:
     recognizable_object_rendering_required: true
     aerial_contacts_enter_from_aoi_edge: true
     uv_bringup_required: true
-- name: tac-fuse-p0-edge-compute-bringup
+- name: tac-fuse-p0-strix-bringup
   priority: P0
   scope: contrib/TAC-FUSE/
   validation_lane: software
@@ -86,15 +86,15 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
-    \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Explore\n\nTask: Make accelerated edge compute\
-    \ bring-up a hard readiness path\n\nCodify the accelerated edge-compute target: non-interactive SSH\
-    \ must expose uv on PATH, the 8 GB RTX-class GPU must pass CUDA/RTX readiness, and the Intel NPU/OpenVINO\
-    \ model path must fail clearly until the exported model is present. Software validation remains for\
-    \ CI, but hardware bring-up is a hard functional target, not UI copy. Regenerate the browser compute-status\
-    \ artifact from runtime inspectors after the hardware checks pass.\n\nGuardrails:\n- Do not make Intel\
-    \ NPU availability, model accuracy, or object detection the center of the work.\n- Scenario work must\
+    \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Explore\n\nTask: Make Strix bring-up a hard\
+    \ readiness path\n\nCodify the Strix hardware target: non-interactive SSH must expose uv on PATH,\
+    \ the 8 GB RTX-class GPU must pass CUDA/RTX readiness, and the Intel NPU/OpenVINO model path must\
+    \ fail clearly until the exported model is present. Software validation remains for CI, but Strix\
+    \ bring-up is a hard functional target, not UI copy. Regenerate the generic Edge Compute browser artifact\
+    \ from runtime inspectors after the hardware checks pass.\n\nGuardrails:\n- Do not make Intel NPU\
+    \ availability, model accuracy, or object detection the center of the work.\n- Scenario work must\
     \ support Route Guard plus Convoy Overwatch, Checkpoint Resupply,\n  Downed Drone Recovery, and Perimeter\
     \ Unknowns when the task touches demo data.\n- Visual work must use Playwright screenshots or assertions,\
     \ including desktop and\n  mobile when practical, to catch overlap, wasted panels, and unreadable\
@@ -105,16 +105,16 @@ tasks:
     \ a four-wheeled\n  vehicle silhouette, and aerial contacts should enter from the AOI edge instead\
     \ of\n  popping into the middle of the workspace.\n- Core CI behavior must remain offline-testable\
     \ and must not require Foundry, Maven,\n  internet, Hugging Face downloads, RTX hardware, or an Intel\
-    \ NPU.\n- Hardware bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n  the exported\
-    \ NPU model, Redis, and actual edge hardware, and should fail\n  clearly when one of those is missing.\n\
-    - If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ NPU.\n- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n  the exported\
+    \ NPU model, Redis, and the actual Strix hardware, and should fail\n  clearly when one of those is\
+    \ missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
     \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
-  verify_command: cd contrib/TAC-FUSE && bash scripts/check_edge_compute_bringup.sh
+  verify_command: cd contrib/TAC-FUSE && bash scripts/check_strix_bringup.sh
   metadata:
     generated_by: contrib/TAC-FUSE/scripts/self_improve.py
     problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
     workflow_stage: explore
-    alignment_focus: edge_compute_readiness
+    alignment_focus: strix_hardware_readiness
     scenario_portfolio_required: true
     playwright_visual_required: true
     cuda_route_optimization_required: true
@@ -129,7 +129,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Prove a single operator\
     \ can control the swarm while denied\n\nStrengthen the web demo, runbook, or local replay fixtures\
@@ -146,10 +146,10 @@ tasks:
     \ object work should use recognizable class instances such as a four-wheeled\n  vehicle silhouette,\
     \ and aerial contacts should enter from the AOI edge instead of\n  popping into the middle of the\
     \ workspace.\n- Core CI behavior must remain offline-testable and must not require Foundry, Maven,\n\
-    \  internet, Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Hardware bring-up tasks are\
-    \ different: they may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and actual\
-    \ edge hardware, and should fail\n  clearly when one of those is missing.\n- If you touch behavior,\
-    \ add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface,\
+    \  internet, Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Strix bring-up tasks are different:\
+    \ they may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and the actual Strix\
+    \ hardware, and should fail\n  clearly when one of those is missing.\n- If you touch behavior, add\
+    \ or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface,\
     \ demo workflow, dependency,\n  or validation changes.\n"
   verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_mission_state.py tests/test_connectivity.py
     -q
@@ -172,7 +172,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Wire Redis live state, local\
     \ embeddings, and fused track memory\n\nBuild on the refactored surfaces already present: denied_ops.py,\
@@ -190,8 +190,8 @@ tasks:
     \ should use recognizable class instances such as a four-wheeled\n  vehicle silhouette, and aerial\
     \ contacts should enter from the AOI edge instead of\n  popping into the middle of the workspace.\n\
     - Core CI behavior must remain offline-testable and must not require Foundry, Maven,\n  internet,\
-    \ Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Hardware bring-up tasks are different:\
-    \ they may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and actual edge hardware,\
+    \ Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Strix bring-up tasks are different: they\
+    \ may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and the actual Strix hardware,\
     \ and should fail\n  clearly when one of those is missing.\n- If you touch behavior, add or update\
     \ focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow,\
     \ dependency,\n  or validation changes.\n"
@@ -216,14 +216,14 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Use CUDA or RTX geometry\
     \ for route optimization\n\nTurn the ray-query lane into a route optimizer rather than a label. Score\
     \ candidate paths against corridor boundaries, unknown contacts, RF-denial areas, line of sight, standoff,\
-    \ battery, and latency. Use CUDA compute or an RTX geometry boundary on edge hardware when available,\
-    \ with deterministic software validation returning the same route decision in tests.\n\nGuardrails:\n\
-    - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.\n\
+    \ battery, and latency. Use CUDA compute or an RTX geometry boundary on Strix when available, with\
+    \ deterministic software validation returning the same route decision in tests.\n\nGuardrails:\n-\
+    \ Do not make Intel NPU availability, model accuracy, or object detection the center of the work.\n\
     - Scenario work must support Route Guard plus Convoy Overwatch, Checkpoint Resupply,\n  Downed Drone\
     \ Recovery, and Perimeter Unknowns when the task touches demo data.\n- Visual work must use Playwright\
     \ screenshots or assertions, including desktop and\n  mobile when practical, to catch overlap, wasted\
@@ -234,9 +234,9 @@ tasks:
     \ instances such as a four-wheeled\n  vehicle silhouette, and aerial contacts should enter from the\
     \ AOI edge instead of\n  popping into the middle of the workspace.\n- Core CI behavior must remain\
     \ offline-testable and must not require Foundry, Maven,\n  internet, Hugging Face downloads, RTX hardware,\
-    \ or an Intel NPU.\n- Hardware bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
-    \  the exported NPU model, Redis, and actual edge hardware, and should fail\n  clearly when one of\
-    \ those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ or an Intel NPU.\n- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
+    \  the exported NPU model, Redis, and the actual Strix hardware, and should fail\n  clearly when one\
+    \ of those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
     \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
   verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_ray_query.py tests/test_route_optimizer.py
     -q
@@ -259,7 +259,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Add multiple denied-connectivity\
     \ scenarios\n\nAdd reusable scenarios beyond Route Guard: Convoy Overwatch, Checkpoint Resupply, Downed\
@@ -276,8 +276,8 @@ tasks:
     \ recognizable class instances such as a four-wheeled\n  vehicle silhouette, and aerial contacts should\
     \ enter from the AOI edge instead of\n  popping into the middle of the workspace.\n- Core CI behavior\
     \ must remain offline-testable and must not require Foundry, Maven,\n  internet, Hugging Face downloads,\
-    \ RTX hardware, or an Intel NPU.\n- Hardware bring-up tasks are different: they may require uv, CUDA/RTX,\
-    \ OpenVINO,\n  the exported NPU model, Redis, and actual edge hardware, and should fail\n  clearly\
+    \ RTX hardware, or an Intel NPU.\n- Strix bring-up tasks are different: they may require uv, CUDA/RTX,\
+    \ OpenVINO,\n  the exported NPU model, Redis, and the actual Strix hardware, and should fail\n  clearly\
     \ when one of those is missing.\n- If you touch behavior, add or update focused offline tests.\n-\
     \ Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,\n  or validation\
     \ changes.\n"
@@ -301,7 +301,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Turn local sensor and geometry\
     \ events into prioritized alerts\n\nImprove the local sensor/fusion path so video, RF, position, stale-feed,\
@@ -318,8 +318,8 @@ tasks:
     \ should use recognizable class instances such as a four-wheeled\n  vehicle silhouette, and aerial\
     \ contacts should enter from the AOI edge instead of\n  popping into the middle of the workspace.\n\
     - Core CI behavior must remain offline-testable and must not require Foundry, Maven,\n  internet,\
-    \ Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Hardware bring-up tasks are different:\
-    \ they may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and actual edge hardware,\
+    \ Hugging Face downloads, RTX hardware, or an Intel NPU.\n- Strix bring-up tasks are different: they\
+    \ may require uv, CUDA/RTX, OpenVINO,\n  the exported NPU model, Redis, and the actual Strix hardware,\
     \ and should fail\n  clearly when one of those is missing.\n- If you touch behavior, add or update\
     \ focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow,\
     \ dependency,\n  or validation changes.\n"
@@ -344,7 +344,7 @@ tasks:
     Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nWorkflow:\n1. Explore\n2. Create\n\
     3. Beautify\n4. Cleanup\n\nPriority order:\n1. Local C2 authority\n2. Disconnected resilience\n3.\
     \ Drone coordination\n4. Sensor fusion and alerting\n5. Functional Redis/embedding/track runtime\n\
-    6. Accelerated edge compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
+    6. Strix accelerated compute bring-up\n7. CUDA route optimization\n8. Scenario portfolio\n9. Playwright\
     \ visual polish\n10. 3D field-C2 quantification\n11. Rendered object training view\n12. Power/latency\
     \ posture\n13. Enterprise sync boundary\n\nCurrent stage: Create\n\nTask: Keep Maven and Foundry behind\
     \ a deferred sync boundary\n\nVerify and tighten the export/upload boundary: exports can be created\
@@ -361,9 +361,9 @@ tasks:
     \ instances such as a four-wheeled\n  vehicle silhouette, and aerial contacts should enter from the\
     \ AOI edge instead of\n  popping into the middle of the workspace.\n- Core CI behavior must remain\
     \ offline-testable and must not require Foundry, Maven,\n  internet, Hugging Face downloads, RTX hardware,\
-    \ or an Intel NPU.\n- Hardware bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
-    \  the exported NPU model, Redis, and actual edge hardware, and should fail\n  clearly when one of\
-    \ those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ or an Intel NPU.\n- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,\n\
+    \  the exported NPU model, Redis, and the actual Strix hardware, and should fail\n  clearly when one\
+    \ of those is missing.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
     \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
   verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_connectivity.py tests/test_maven_foundry_config.py
     -q

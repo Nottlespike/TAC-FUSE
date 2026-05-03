@@ -20,12 +20,13 @@ uv run python scripts/check_npu_runtime.py --device NPU
 ```
 
 The NPU check is a supporting proof point. The demo models Alpha, Bravo,
-Charlie, and Delta as edge devices with simple onboard NPU cueing. If the
-hardware lane reports unavailable, say: "The accelerated hardware lane is still
-integration work; the denied-connectivity C2 demo does not depend on it." If it
-reports ready, use it in the sensor-cue beat below.
+Charlie, and Delta as edge devices with simple onboard NPU cueing. Strix is the
+hardware proof rig for the same distributed CV lane. If Strix reports
+unavailable, say: "The Strix hard-readiness lane is still integration work; the
+denied-connectivity C2 demo does not depend on it." If it reports ready, use it
+in the sensor-cue beat below.
 
-Use `--require-npu` only for the optional final hardware proof check:
+On Strix, use `--require-npu` only for the optional final hardware proof check:
 
 ```bash
 # Optional proof only; not required for local C2.
@@ -54,9 +55,9 @@ Show: Route Guard Corridor on the AOI and 3D field view.
 
 Say: "The operator sees moving air and ground contacts, route corridor state, and prioritized cues in one local view."
 
-If the edge NPU is ready, say: "Each platform can run simple onboard CV; this is the hard proof for that distributed NPU lane." Then show the NPU readiness output or prepared local cue result.
+If Strix NPU is ready, say: "Each platform can run simple onboard CV; Strix is the hard proof rig for that distributed NPU lane." Then show the NPU readiness output or prepared local cue result.
 
-If the edge NPU is not ready, say: "The onboard cue lane degrades to deterministic local cues; C2 and route guard continue."
+If Strix NPU is not ready, say: "The onboard cue lane degrades to deterministic local cues; C2 and route guard continue."
 
 ### 1:25-2:00 - Close Against The Rubric
 
@@ -86,7 +87,7 @@ Switch between feeds and show that multiple drones and the ground team are still
 
 Show the corridor on both sides of the view. Call out the highest-priority contact and why it matters.
 
-For distributed device CV with hardware-readiness proof:
+For distributed device CV with Strix as hard-readiness proof:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
@@ -110,7 +111,7 @@ Toggle `Online`, then release the staged packet. Explain that reconnect is a con
 
 Close with the three evidence cards:
 
-- Technical Demo 35%: working local app, tests, visual proof, distributed onboard CV cues, and optional hardware-readiness proof.
+- Technical Demo 35%: working local app, tests, visual proof, distributed onboard CV cues, and optional Strix hard-readiness proof.
 - Military Impact 30%: route guard and drone C2 survive denied connectivity.
 - Creativity 25%: edge kit as local authority with deferred enterprise sync.
 

@@ -51,12 +51,11 @@ models/siglip2-field-npu/
 
 Set `TAC_FUSE_SIGLIP_MODEL_DIR` if the exported model lives elsewhere. Set `TAC_FUSE_SIGLIP_DEVICE=NPU` on Intel NPU systems, or `CPU` for parity checks.
 
-For the distributed device-CV lane, run the hardware-readiness checks on the
-target edge kit:
+For the distributed device-CV lane, run the hardware-readiness checks on Strix:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
-TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py --output web/edge_compute_status.js --device NPU --model-dir models/siglip2-field-npu --host-label "Edge Kit" --source-label hardware
+TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py --output web/edge_compute_status.js --device NPU --model-dir models/siglip2-field-npu --host-label Strix --source-label strix
 ```
 
 If the NPU check reports ready, regenerate the browser status artifact and use
@@ -78,6 +77,6 @@ Core execution writes SQLite state first. Foundry integration is represented as 
 
 The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The geometry path is the automatic corridor guard: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries.
 
-For a hardware run, use `scripts/check_edge_compute_bringup.sh`. It verifies
+For a Strix hardware run, use `scripts/check_strix_bringup.sh`. It verifies
 `uv`, CUDA/RTX readiness, and the OpenVINO NPU model path, then writes
 `web/edge_compute_status.js` for the static browser demo.

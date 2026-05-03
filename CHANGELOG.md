@@ -13,11 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `web/edge_compute_status.js` so the static browser demo can display live
   accelerated-compute readiness from a script tag without requiring an HTTP
   server.
+- Strix bring-up wrapper that verifies `uv`, CUDA/RTX readiness, and the Intel
+  NPU model path before regenerating the generic Edge Compute browser artifact.
 - Alpha test plan and queueable polish task pack focused on route-guard C2
-  quality, RTX/BVH pathing, edge NPU zero-shot cue labels, and trained-model
+  quality, RTX/BVH pathing, Strix NPU zero-shot cue labels, and trained-model
   readiness.
 - Two-to-five-minute judging demo script covering the route-guard denied
-  connectivity story, the exact operator beats, rubric close, and edge Intel
+  connectivity story, the exact operator beats, rubric close, and Strix Intel
   NPU real-CV integration lane with fallback language.
 - Local C2 state-first proof path: every operator tasking or retasking action now persists to local mission state, audit log, and outbound sync queue BEFORE any enterprise export can run. Exports are deterministic offline artifacts derived from persisted state.
 - `cancel_task()` method on `MissionStateStore` for retasking/cancellation that follows the same state-first guarantee: persists state, audit log, and sync queue entry before any export.
@@ -91,13 +93,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Charlie, Delta, and Team 1 remain known friendly tracks across edge-node
   perspectives instead of being reclassified as unknown detector objects.
 - Extended the self-improvement generator to order work as Explore, Create,
-  Beautify, and Cleanup; first-run tasks now include edge-kit `uv` bring-up,
+  Beautify, and Cleanup; first-run tasks now include Strix `uv` bring-up,
   CUDA/RTX route optimization, multiple denied-connectivity scenarios, and
   Playwright-driven visual bug fixing before cleanup.
 - Made the dashboard explicitly state the Problem Statement 2 route-guard
   scenario and judging evidence: cut off from internet and command, local C2
   holds the corridor, and visible Technical Demo, Military Impact, and
-  Creativity proof points. Added the edge Intel NPU real-CV lane as an
+  Creativity proof points. Added the Strix Intel NPU real-CV lane as an
   integration hook without making it a requirement for local C2.
 - Standardized the browser demo on capitalized display copy and reframed the
   selected surface as a synthesized 3D Field C2 View with priority contacts.
@@ -139,7 +141,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Reframed UI and demo scripts to position accelerators as optional supporting capabilities**: Changed "Detector"/"Object pass" metrics to "Sensor Cue"/"Local cue pass"; updated POV labels from "3D OBJECT MAP"/"DET" to "3D FUSION MAP"/"CUE"; made RTX prerequisite check optional in demo sequence; removed mandatory RTX validation from quick-start and demo bootstrap.
 - Tightened the self-improvement inference-centrality audit to match bounded
   centrality terms, preventing false positives from words like score/remains
-  while keeping edge NPU proof copy explicitly optional.
+  while keeping Strix NPU proof copy explicitly optional.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.

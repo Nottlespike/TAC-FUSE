@@ -42,7 +42,7 @@ fi
 if uv run python scripts/check_ray_runtime.py --require-rtx >/tmp/tac-fuse-rtx-status.json 2>/tmp/tac-fuse-rtx-status.err; then
     echo "[OK]   TAC-FUSE RTX runtime boundary is available"
 else
-    echo "[FAIL] TAC-FUSE RTX runtime boundary unavailable on edge target"
+    echo "[FAIL] TAC-FUSE RTX runtime boundary unavailable on Strix target"
     cat /tmp/tac-fuse-rtx-status.err || true
     cat /tmp/tac-fuse-rtx-status.json || true
     exit 1

@@ -62,10 +62,11 @@ The primary capability is not object detection. The primary capability is resili
 | Tests pass | Full offline test suite | `uv run pytest -q` |
 | Lint clean | `ruff check src tests` | `uv run ruff check src tests` |
 
-For remote hardware checks, always use the same non-interactive SSH bootstrap:
+For Strix remote checks, always use the same non-interactive SSH bootstrap
+(the current SSH alias is `gpu`):
 
 ```bash
-ssh gpu 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_edge_compute_bringup.sh'
+ssh gpu 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
 ```
 
 ### 2.3 RTX Prerequisite Check Script
@@ -112,7 +113,7 @@ echo "Any [FAIL] — invoke fallback ladder before starting."
 ```
 
 Run with: `bash docs/check_rtx_prereqs.sh`. It now fails if `uv` is not on
-PATH, if the GPU is below the 8 GB target, or if the TAC-FUSE RTX runtime
+PATH, if the GPU is below the Strix 8 GB target, or if the TAC-FUSE RTX runtime
 boundary cannot use CUDA/RTX.
 
 ---
@@ -136,8 +137,8 @@ uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
 # 3. Lint check
 uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
 
-# 4. Accelerated edge-compute readiness lane
-bash scripts/check_edge_compute_bringup.sh
+# 4. Strix hard-readiness lane
+bash scripts/check_strix_bringup.sh
 ```
 
 ### 3.2 Phase 1 — Core State Initialization (2–3 min)
