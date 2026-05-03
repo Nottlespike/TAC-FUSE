@@ -13,6 +13,7 @@ The final hardware target is Strix: an 8 GB RTX laptop GPU plus Intel NPU, with
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -320,6 +321,14 @@ def _has_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in lowered for term in terms)
 
 
+def _has_bounded_any(text: str, terms: tuple[str, ...]) -> bool:
+    lowered = _normalise(text)
+    return any(
+        re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", lowered)
+        for term in terms
+    )
+
+
 def _relative(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
@@ -366,7 +375,7 @@ def _inference_centrality_findings(root: Path, path: Path, text: str) -> list[Fi
         if "npu-label" in lowered:
             continue
         context = _line_context(lines, index)
-        if not _has_any(context, CENTRALITY_RISK_TERMS):
+        if not _has_bounded_any(line, CENTRALITY_RISK_TERMS):
             continue
         if _has_any(context, SUPPORTING_CONTEXT_TERMS):
             continue

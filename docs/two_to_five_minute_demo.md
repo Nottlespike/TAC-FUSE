@@ -26,9 +26,10 @@ unavailable, say: "The Strix hard-readiness lane is still integration work; the
 denied-connectivity C2 demo does not depend on it." If it reports ready, use it
 in the sensor-cue beat below.
 
-On Strix, use `--require-npu` only for the final hardware proof check:
+On Strix, use `--require-npu` only for the optional final hardware proof check:
 
 ```bash
+# Optional proof only; not required for local C2.
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu --require-npu
 ```
 
@@ -95,7 +96,8 @@ TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device N
 If `ready` is true, describe the CV cue as the local NPU-supported
 classification/prioritization input that each field platform should provide. If
 `ready` is false, state that the hard NPU lane is still being integrated and the
-C2 path remains fully demonstrable.
+C2 path remains fully demonstrable because the NPU proof is not required for
+local command authority.
 
 ### 3:00-3:45 - Power And Latency
 

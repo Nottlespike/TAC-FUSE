@@ -23,7 +23,7 @@ from typing import Any
 from tac_fuse.connectivity import ConnectivityController, ConnectivityMode
 from tac_fuse.foundry_export import build_foundry_export
 from tac_fuse.mission_state import MissionStateStore
-from tac_fuse.replay import SeededReplayEngine, generate_scenario
+from tac_fuse.replay import SeededReplayEngine
 
 
 @dataclass
@@ -309,9 +309,13 @@ def run_denied_operations_proof(
         _snapshot(
             "degraded_recovery",
             extra_notes=[
-                "Connectivity degraded — partial link restored",
+                "Connectivity degraded - partial link restored",
                 "Local C2 continues operating normally",
-                f"Enterprise sync {'blocked' if sync_blocked else 'UNEXPECTEDLY OPEN'} in degraded mode",
+                (
+                    "Enterprise sync "
+                    f"{'blocked' if sync_blocked else 'UNEXPECTEDLY OPEN'} "
+                    "in degraded mode"
+                ),
                 "Recovery commands queued for sync when online",
             ],
         )

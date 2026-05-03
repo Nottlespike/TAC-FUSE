@@ -110,6 +110,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test `test_upload_requires_both_online_mode_and_credentials()` verifying the unified upload gate requires both ONLINE mode AND valid credentials.
 - Tests `test_assert_sync_allowed_*` and `test_export_always_works_regardless_of_sync_boundary()` proving the hard gate raises `SyncBoundaryViolation` on all boundary conditions while exports remain unaffected.
 - **Reframed UI and demo scripts to position accelerators as optional supporting capabilities**: Changed "Detector"/"Object pass" metrics to "Sensor Cue"/"Local cue pass"; updated POV labels from "3D OBJECT MAP"/"DET" to "3D FUSION MAP"/"CUE"; made RTX prerequisite check optional in demo sequence; removed mandatory RTX validation from quick-start and demo bootstrap.
+- Tightened the self-improvement inference-centrality audit to match bounded
+  centrality terms, preventing false positives from words like score/remains
+  while keeping Strix NPU proof copy explicitly optional.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.
