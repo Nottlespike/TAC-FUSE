@@ -19,6 +19,13 @@ The demo should prove that a single operator can:
 - continue operating when Foundry, Maven, internet, or central C2 links are down,
 - reconcile/export when connectivity returns.
 
+Route Guard is the primary two-to-five-minute scenario, but it is not the only
+valid mission. TAC-FUSE should also support Convoy Overwatch, Checkpoint
+Resupply, Downed Drone Recovery, and Perimeter Unknowns. Each scenario keeps
+the same structure: denied connectivity, local C2 authority, BVH/ray geometry
+for route or movement safety, and distributed onboard CV cues for identifying
+unknowns.
+
 ## Priority Order
 
 1. **Local C2 authority**: operator commands apply locally and persist first.
@@ -31,13 +38,14 @@ The demo should prove that a single operator can:
 ## Accelerator Role
 
 MPUs, NPUs, GPUs, and RTX paths are **supporting capabilities**. They demonstrate
-that the edge node can process local sensor data when useful, but they are not the
-application's center of gravity.
+that the laptop and each field platform can process local sensor data when
+useful, but they are not the application's center of gravity.
 
 Object detection should appear as a proof point only after the local C2 loop is
-working: "once identifiable objects exist in the feed, the edge hardware can
-classify or prioritize them locally." If inference fails, the operator must still
-retain C2, map context, tasking, logs, and sync queue continuity.
+working: "once identifiable objects or unknown contacts exist in the feed, each
+edge device can classify or prioritize them locally." Strix is the hard-readiness
+proof rig for this distributed NPU lane. If inference fails, the operator must
+still retain C2, map context, tasking, logs, and sync queue continuity.
 
 ## Non-Goals
 

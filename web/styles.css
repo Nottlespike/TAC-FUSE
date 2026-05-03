@@ -356,6 +356,19 @@ body {
 
 .section-heading {
     justify-content: space-between;
+    min-width: 0;
+    gap: 14px;
+}
+
+.section-heading > div:first-child {
+    min-width: 0;
+}
+
+.section-heading h1,
+.section-heading .subtle {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 h1,
@@ -564,6 +577,8 @@ canvas {
 }
 
 .panel {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
     padding: 10px;
     overflow: hidden;
@@ -590,7 +605,12 @@ canvas {
 .mission-log,
 .status-list,
 .vision-scores {
+    flex: 1 1 auto;
     overflow: auto;
+}
+
+.packet-list {
+    flex: 1 1 auto;
 }
 
 .compact-log {
@@ -618,6 +638,11 @@ canvas {
     color: var(--text);
     text-align: left;
     cursor: pointer;
+}
+
+.asset-row:hover {
+    border-color: rgba(85, 214, 166, 0.5);
+    background: #1a282c;
 }
 
 .asset-row.selected {
@@ -650,6 +675,48 @@ canvas {
     gap: 10px;
     align-items: center;
     padding: 8px 10px;
+}
+
+.feed-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-width: 0;
+    max-width: min(42vw, 520px);
+}
+
+.feed-tab {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #162126;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 6px 9px;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.feed-tab span {
+    color: var(--muted);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.feed-tab.active {
+    border-color: #2a6e57;
+    background: #14251f;
+    color: var(--accent);
+}
+
+.feed-tab.active span {
+    color: #b8f7dc;
 }
 
 .command-panel h2 {

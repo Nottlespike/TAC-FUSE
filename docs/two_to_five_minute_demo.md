@@ -19,7 +19,12 @@ uv run ruff check src tests
 uv run python scripts/check_npu_runtime.py --device NPU
 ```
 
-The NPU check is a supporting proof point. If it reports unavailable, say: "The Strix real-CV lane is integration work; the denied-connectivity C2 demo does not depend on it." If it reports ready, use it in the sensor-cue beat below.
+The NPU check is a supporting proof point. The demo models Alpha, Bravo,
+Charlie, and Delta as edge devices with simple onboard NPU cueing. Strix is the
+development proof rig for the same distributed CV lane. If Strix reports
+unavailable, say: "The Strix hard-readiness lane is still integration work; the
+denied-connectivity C2 demo does not depend on it." If it reports ready, use it
+in the sensor-cue beat below.
 
 On Strix, use `--require-npu` only for the final hardware proof check:
 
@@ -49,9 +54,9 @@ Show: Route Guard Corridor on the AOI and 3D field view.
 
 Say: "The operator sees moving air and ground contacts, route corridor state, and prioritized cues in one local view."
 
-If Strix NPU is ready, say: "The Strix Intel NPU lane adds real local CV cues once objects are visible." Then show the NPU readiness output or prepared local cue result.
+If Strix NPU is ready, say: "Each platform can run simple onboard CV; Strix is the hard proof rig for that distributed NPU lane." Then show the NPU readiness output or prepared local cue result.
 
-If Strix NPU is not ready, say: "The cue lane degrades to deterministic local cues; C2 and route guard continue."
+If Strix NPU is not ready, say: "The onboard cue lane degrades to deterministic local cues; C2 and route guard continue."
 
 ### 1:25-2:00 - Close Against The Rubric
 
@@ -81,13 +86,16 @@ Switch between feeds and show that multiple drones and the ground team are still
 
 Show the corridor on both sides of the view. Call out the highest-priority contact and why it matters.
 
-For real CV on Strix:
+For distributed device CV with Strix as hard-readiness proof:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
 ```
 
-If `ready` is true, describe the CV cue as a local NPU-supported classification/prioritization input. If `ready` is false, state that the NPU lane is still being integrated and the route-guard C2 path remains fully demonstrable.
+If `ready` is true, describe the CV cue as the local NPU-supported
+classification/prioritization input that each field platform should provide. If
+`ready` is false, state that the hard NPU lane is still being integrated and the
+C2 path remains fully demonstrable.
 
 ### 3:00-3:45 - Power And Latency
 
@@ -101,9 +109,21 @@ Toggle `Online`, then release the staged packet. Explain that reconnect is a con
 
 Close with the three evidence cards:
 
-- Technical Demo 35%: working local app, tests, visual proof, and optional Strix NPU CV lane.
+- Technical Demo 35%: working local app, tests, visual proof, distributed onboard CV cues, and optional Strix hard-readiness proof.
 - Military Impact 30%: route guard and drone C2 survive denied connectivity.
 - Creativity 25%: edge kit as local authority with deferred enterprise sync.
+
+## Scenario Portfolio
+
+Keep Route Guard as the primary judging demo. The self-improvement loop should
+also preserve these scenario families so the project does not become a single
+scene:
+
+- Route Guard: guard a route while cut off from internet and command.
+- Convoy Overwatch: deconflict moving vehicles and drones under degraded comms.
+- Checkpoint Resupply: keep relay, cue triage, and local sync for a remote checkpoint.
+- Downed Drone Recovery: retask the remaining swarm when one asset drops out.
+- Perimeter Unknowns: identify unknown air and ground contacts near protected movement.
 
 ## Do Not Say
 

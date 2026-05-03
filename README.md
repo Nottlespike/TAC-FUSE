@@ -2,7 +2,7 @@
 
 TAC-FUSE is a local-first edge command-and-control emulator for hardened field laptops and backpack-class kits. It targets **Problem Statement 2: Edge Deployments and Drone Operation**: keep a front-line operator in control of autonomous systems when connectivity to central infrastructure is intermittent, degraded, or fully denied.
 
-The core demo is the local C2 loop: cached theater view, drone swarm state, operator tasking, local mission database, prioritized alerts, and deferred Maven/Foundry sync. Local inference is a supporting capability. The SigLIP/OpenVINO path shows that the edge node can classify or prioritize identifiable objects from local feeds, but the application must remain useful without Intel NPU hardware, cloud inference, or model downloads.
+The core demo is the local C2 loop: cached theater view, drone swarm state, operator tasking, local mission database, prioritized alerts, and deferred Maven/Foundry sync. Local inference is a supporting capability. The SigLIP/OpenVINO path shows that each edge device can classify or prioritize identifiable objects and unknown contacts from local feeds, while the application remains useful without Intel NPU hardware, cloud inference, or model downloads.
 
 See `docs/problem_statement_alignment.md` for the project-level targeting
 rules and `docs/two_to_five_minute_demo.md` for the short judging demo script.
@@ -31,7 +31,7 @@ automatic download under the catalog policy. Large cached rasters stay under
 
 ## Supporting Inference Path
 
-Object detection and scene classification are supporting proof points, not the main product. The hardened laptop remains the C2 authority when inference is unavailable. Use the optional SigLIP2/OpenVINO path to show that once objects are visible in local drone feeds, the edge kit can classify and prioritize them without cloud infrastructure.
+Object detection and scene classification are supporting proof points, not the main product. The hardened laptop remains the C2 authority when inference is unavailable. Use the optional SigLIP2/OpenVINO path to show that once objects or unknowns are visible in local drone feeds, each field platform can classify and prioritize them without cloud infrastructure.
 
 Expected local model layout:
 
@@ -43,15 +43,15 @@ models/siglip2-field-npu/
 
 Set `TAC_FUSE_SIGLIP_MODEL_DIR` if the exported model lives elsewhere. Set `TAC_FUSE_SIGLIP_DEVICE=NPU` on Intel NPU systems, or `CPU` for parity checks.
 
-For the Strix real-CV integration lane:
+For the distributed device-CV lane, with Strix as the hard-readiness proof rig:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
 ```
 
-If this reports ready, use it as the local CV proof point in the demo. If it is
-not ready, keep the demo on the denied-connectivity C2 path and describe the
-NPU lane as integration work.
+If this reports ready, use it as the local CV proof point for the onboard cue
+lane in the demo. If it is not ready, keep the demo on the denied-connectivity
+C2 path and describe the hard NPU lane as integration work.
 
 ## Foundry Boundary
 
@@ -65,4 +65,4 @@ Core execution writes SQLite state first. Foundry integration is represented as 
 
 ## Local Hardware Boundary
 
-The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The BVH path is the collision and route-optimization solver: it checks drone paths against hazards, nearby assets, and route corridors. Ray-tracing cores are useful because they accelerate those spatial queries; without RTX/CUDA availability the CPU parity path stays available for offline validation.
+The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The BVH path is the route-guard geometry solver: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries; without RTX/CUDA availability the CPU parity path stays available for offline validation.

@@ -88,12 +88,13 @@ test("operator surface is dense and the selected POV is animated", async ({ page
 
   await expect(page.locator("#pov-title")).toContainText("3D Field View");
   await expect(page.locator("#frame-counter")).toContainText("Field C2 View");
-  await expect(page.locator("#frame-counter")).toContainText("Problem Statement 2");
-  await expect(page.locator("#mission-evidence")).toContainText("Cut Off Route Guard");
-  await expect(page.locator("#mission-evidence")).toContainText("Technical Demo 35%");
-  await expect(page.locator("#mission-evidence")).toContainText("Military Impact 30%");
-  await expect(page.locator("#mission-evidence")).toContainText("Creativity 25%");
-  await expect(page.locator("#mission-evidence")).toContainText("Strix Intel NPU CV Lane");
+  await expect(page.locator("#frame-counter")).toContainText("Command Reachback Lost");
+  await expect(page.locator("#mission-evidence")).toContainText("Route Guard Live");
+  await expect(page.locator("#mission-evidence")).toContainText("Working System");
+  await expect(page.locator("#mission-evidence")).toContainText("Route Continuity");
+  await expect(page.locator("#mission-evidence")).toContainText("Edge Authority");
+  await expect(page.locator("#mission-evidence")).toContainText("Drone NPUs");
+  await expect(page.locator("#mission-evidence")).not.toContainText(/Problem Statement 2|Technical Demo 35%|Military Impact 30%|Creativity 25%/);
   await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
   await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
   await expect(page.locator(".metric-strip")).toContainText("Power");
@@ -107,7 +108,7 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
   const targetClasses = (await page.locator(".target-label strong").allTextContents()).join(" ");
-  expect(targetClasses).toMatch(/Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing/);
+  expect(targetClasses).toMatch(/Unknown Ground Contact|Unknown Air Contact|Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();

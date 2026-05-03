@@ -19,6 +19,7 @@ const colors = {
   signal: "#d7d95f",
   personnel: "#b8d8ff",
   micro: "#c9a3ff",
+  unknown: "#ff9f6e",
 };
 
 const earthImagery = {
@@ -43,15 +44,15 @@ const ROUTE_GUARD_PATH = [
   { x: 1138, y: 450 },
 ];
 const ROUTE_GUARD_SCENARIO = {
-  title: "Problem Statement 2",
-  mission: "Cut Off Route Guard",
-  summary: "Internet Gone · Command Gone · Local C2 Holds The Corridor",
-  cvLane: "Strix Intel NPU CV Lane · Integration Hook",
+  title: "Denied Route Guard",
+  mission: "Route Guard Live",
+  summary: "Internet Lost · Command Reachback Lost · Local Authority Holds",
+  cvLane: "Device NPU Cues · Alpha/Bravo/Charlie/Delta",
 };
-const JUDGING_CRITERIA = [
-  { label: "Technical Demo", weight: 35 },
-  { label: "Military Impact", weight: 30 },
-  { label: "Creativity", weight: 25 },
+const MISSION_SIGNALS = [
+  { label: "Working System", kind: "system" },
+  { label: "Route Continuity", kind: "route" },
+  { label: "Edge Authority", kind: "authority" },
 ];
 
 // Contributor feeds to the fusion node - each has freshness/confidence/latency
@@ -75,6 +76,7 @@ const feeds = [
     freshness: 0.96,
     confidence: 0.88,
     latency: 42,
+    npu: { device: "NPU", cue: "Route Contact", confidence: 0.86 },
   },
   {
     id: "uav-bravo",
@@ -95,6 +97,7 @@ const feeds = [
     freshness: 0.88,
     confidence: 0.72,
     latency: 78,
+    npu: { device: "NPU", cue: "Air Track", confidence: 0.79 },
   },
   {
     id: "uav-charlie",
@@ -115,6 +118,7 @@ const feeds = [
     freshness: 0.93,
     confidence: 0.91,
     latency: 31,
+    npu: { device: "NPU", cue: "RF Source", confidence: 0.88 },
   },
   {
     id: "uav-delta",
@@ -135,6 +139,7 @@ const feeds = [
     freshness: 0.81,
     confidence: 0.65,
     latency: 120,
+    npu: { device: "NPU", cue: "Unknown Cue", confidence: 0.74 },
   },
 ];
 
@@ -223,6 +228,40 @@ const sceneClassTargets = [
     confidence: 0.64,
     latency: 71,
   },
+  {
+    id: "scene-unknown-31",
+    key: "unknown",
+    callsign: "Unknown 31",
+    type: "unknown-contact",
+    x: 930,
+    y: 520,
+    z: 6,
+    heading: -28,
+    speed: 4.8,
+    routeIndex: 4,
+    freshness: 0.79,
+    confidence: 0.58,
+    latency: 74,
+    identification: "needs-id",
+  },
+  {
+    id: "scene-unknown-air-09",
+    key: "unknown",
+    callsign: "Unknown 09",
+    type: "unknown-uas",
+    x: 520,
+    y: 500,
+    z: 90,
+    heading: 112,
+    speed: 14,
+    orbitCenter: { x: 520, y: 500 },
+    orbitRadius: 64,
+    orbitPhase: 2.6,
+    freshness: 0.73,
+    confidence: 0.53,
+    latency: 82,
+    identification: "needs-id",
+  },
 ];
 
 let selectedId = "uav-alpha";
@@ -238,6 +277,11 @@ let spoolDepth = 0;         // offline spool buffer depth
 let syncWatermark = 0;      // timestamp of last staged sync
 let syncStaged = false;     // whether a packet is staged for gate
 const MAX_MISSION_LOG = 40;  // extended log for replay timeline
+const fusedTracks = new Map();
+const TRACK_MEMORY_SECONDS = 18;
+const TRACK_PRUNE_SECONDS = 45;
+const TRACK_ASSOCIATION_RADIUS_M = 55;
+let nextTrackSerial = 1;
 
 // Swarm-wide tasking state — single-operator C2 proof
 // Tracks operator commands across all drones for the denied-ops proof path
@@ -578,6 +622,20 @@ function updateFieldContacts(dt) {
       target.y = clamp(center.y + Math.sin(target.orbitPhase) * (target.orbitRadius || 80), 30, WORLD_M - 30);
       target.heading = ((target.orbitPhase + Math.PI / 2) * 180) / Math.PI;
       target.z = 74 + Math.sin(target.orbitPhase * 1.7) * 8;
+    } else if (target.type === "unknown-contact") {
+      const nextIndex = target.routeIndex ?? 0;
+      const distance = movePlanarActor(target, ROUTE_GUARD_PATH[nextIndex], dt, 4.8, 35);
+      if (distance < 16) {
+        target.routeIndex = (nextIndex + 1) % ROUTE_GUARD_PATH.length;
+      }
+      target.z = terrainHeightAt(target.x, target.y) + 4;
+    } else if (target.type === "unknown-uas") {
+      target.orbitPhase = (target.orbitPhase || 0) + dt * ((target.speed || 14) / (target.orbitRadius || 64));
+      const center = target.orbitCenter || { x: target.x, y: target.y };
+      target.x = clamp(center.x + Math.cos(target.orbitPhase) * (target.orbitRadius || 64), 30, WORLD_M - 30);
+      target.y = clamp(center.y + Math.sin(target.orbitPhase) * (target.orbitRadius || 64), 30, WORLD_M - 30);
+      target.heading = ((target.orbitPhase + Math.PI / 2) * 180) / Math.PI;
+      target.z = 86 + Math.sin(target.orbitPhase * 1.4) * 7;
     }
   }
 }
@@ -592,6 +650,9 @@ function stepSimulation(dt) {
     feed.freshness = Math.max(0.4, Math.min(1.0, feed.freshness + (Math.random() - 0.5) * 0.02));
     feed.confidence = Math.max(0.3, Math.min(0.99, feed.confidence + (Math.random() - 0.5) * 0.03));
     feed.latency = Math.max(20, Math.min(300, feed.latency + (Math.random() - 0.5) * 10));
+    if (feed.npu) {
+      feed.npu.confidence = clamp(feed.npu.confidence + Math.sin(simTime * 0.31 + feed.x * 0.01) * 0.002, 0.52, 0.96);
+    }
   }
 
   // Laptop battery drain (simulates fusion node power consumption)
@@ -631,6 +692,7 @@ function stepSimulation(dt) {
       : feed.target;
     moveToward(feed, target, dt, avoidance || terrainConflict);
   }
+  updateFusedTracks(dt);
 }
 
 function moveToward(feed, target, dt, avoidance) {
@@ -736,6 +798,20 @@ function bvhQuery(asset) {
       hits.push({ ...hazard, kind: "hazard", distance, radius: hazard.r });
     }
   }
+  for (const contact of sceneClassTargets.filter((item) => item.type.startsWith("unknown"))) {
+    const routeDistance = distanceToRouteGuard(contact);
+    const contactDistance = Math.hypot(asset.x - contact.x, asset.y - contact.y);
+    if (routeDistance < ROUTE_GUARD_HALF_WIDTH_M + 24 && contactDistance < 360) {
+      hits.push({
+        ...contact,
+        label: "Unknown Route Contact",
+        kind: "unknown",
+        severity: "critical",
+        distance: contactDistance,
+        radius: 34,
+      });
+    }
+  }
   for (const other of allFeeds()) {
     if (other.id === asset.id) continue;
     const distance = Math.hypot(asset.x - other.x, asset.y - other.y);
@@ -744,6 +820,30 @@ function bvhQuery(asset) {
     }
   }
   return hits.sort((a, b) => a.distance - b.distance);
+}
+
+function distanceToRouteGuard(point) {
+  let minDistance = Infinity;
+  for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+    minDistance = Math.min(
+      minDistance,
+      distancePointToSegment(point, ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1]),
+    );
+  }
+  return minDistance;
+}
+
+function distancePointToSegment(point, a, b) {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const wx = point.x - a.x;
+  const wy = point.y - a.y;
+  const lengthSq = vx * vx + vy * vy;
+  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y);
+  const t = clamp((wx * vx + wy * vy) / lengthSq, 0, 1);
+  const x = a.x + t * vx;
+  const y = a.y + t * vy;
+  return Math.hypot(point.x - x, point.y - y);
 }
 
 function buildBvhNodes() {
@@ -772,9 +872,17 @@ function syncGateLabel() {
 function classifyFrame(feed, visible) {
   const objectCount = visible.length;
   const airCount = visible.filter((obj) => obj.type !== "ground").length;
+  const unknownCount = visible.filter((obj) => obj.type.startsWith("unknown")).length;
   const avgConfidence = objectCount
     ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / objectCount
     : 0;
+  if (unknownCount > 0) {
+    return [
+      ["Unknown Contact Requires ID", 0.9],
+      ["Distributed NPU Cue Pass", Math.max(0.52, feed.npu?.confidence || avgConfidence)],
+      ["BVH Route Guard Check", 0.88],
+    ];
+  }
   if (visible.some((obj) => obj.threat === "critical")) {
     return [
       ["Restricted Object Quantified", 0.92],
@@ -796,7 +904,161 @@ function classifyFrame(feed, visible) {
   ];
 }
 
+function updateFusedTracks(dt) {
+  void dt;
+  const observedTracks = new Set();
+
+  for (const feed of feeds) {
+    for (const observation of detectObjectsForFeed(feed)) {
+      const track = upsertFusedTrack(feed, observation);
+      observedTracks.add(track.id);
+    }
+  }
+
+  for (const [trackId, track] of fusedTracks) {
+    if (!observedTracks.has(trackId)) {
+      track.sources.clear();
+    }
+    if (simTime - track.lastSeen > TRACK_PRUNE_SECONDS) {
+      fusedTracks.delete(trackId);
+    }
+  }
+}
+
+function upsertFusedTrack(feed, observation) {
+  const trackId = associateTrack(observation);
+  const existing = trackId ? fusedTracks.get(trackId) : null;
+  const track = existing || {
+    id: `track-${nextTrackSerial++}`,
+    targetId: observation.id,
+    firstSeen: simTime,
+    lastSeen: simTime,
+    x: observation.x,
+    y: observation.y,
+    z: observation.z,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    key: observation.key,
+    callsign: observation.callsign,
+    type: observation.type,
+    className: observation.className,
+    confidence: observation.detectionConfidence,
+    threat: observation.threat,
+    sources: new Set(),
+    history: [],
+  };
+
+  const elapsed = Math.max(0.001, simTime - track.lastSeen);
+  track.vx = (observation.x - track.x) / elapsed;
+  track.vy = (observation.y - track.y) / elapsed;
+  track.vz = (observation.z - track.z) / elapsed;
+  track.x = observation.x;
+  track.y = observation.y;
+  track.z = observation.z;
+  track.key = observation.key;
+  track.callsign = observation.callsign;
+  track.type = observation.type;
+  track.className = observation.className;
+  track.confidence = Math.max(track.confidence * 0.72, observation.detectionConfidence);
+  track.threat = observation.threat === "critical" ? "critical" : track.threat;
+  track.lastSeen = simTime;
+  track.sources.add(feed.callsign);
+  track.history.unshift({
+    source: feed.callsign,
+    confidence: observation.detectionConfidence,
+    ts: simTime,
+  });
+  track.history = track.history.slice(0, 10);
+  fusedTracks.set(track.id, track);
+  return track;
+}
+
+function associateTrack(observation) {
+  for (const [trackId, track] of fusedTracks) {
+    if (track.targetId === observation.id) return trackId;
+  }
+
+  let nearestId = null;
+  let nearestDistance = TRACK_ASSOCIATION_RADIUS_M;
+  for (const [trackId, track] of fusedTracks) {
+    if (track.type !== observation.type) continue;
+    const distance = Math.hypot(track.x - observation.x, track.y - observation.y);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestId = trackId;
+    }
+  }
+  return nearestId;
+}
+
+function fusedTrackObjects(feed) {
+  const direct = detectObjectsForFeed(feed);
+  const directById = new Map(direct.map((obj) => [obj.id, obj]));
+  const fused = [];
+
+  for (const track of fusedTracks.values()) {
+    const age = simTime - track.lastSeen;
+    if (age > TRACK_MEMORY_SECONDS) continue;
+    const directObj = directById.get(track.targetId);
+    const base = directObj || track;
+    const dx = track.x - feed.x;
+    const dy = track.y - feed.y;
+    const range = Math.round(Math.hypot(dx, dy));
+    const angle = Math.atan2(dy, dx);
+    const heading = (feed.heading * Math.PI) / 180;
+    const delta = wrapAngle(angle - heading);
+    const sourceNames = Array.from(track.sources);
+    fused.push({
+      ...base,
+      id: track.id,
+      targetId: track.targetId,
+      callsign: track.callsign,
+      x: track.x,
+      y: track.y,
+      z: track.z,
+      vx: track.vx,
+      vy: track.vy,
+      type: track.type,
+      key: track.key,
+      className: track.className,
+      range,
+      bearingDeg: Math.round(((delta * 180) / Math.PI + 360) % 360),
+      altitudeDelta: Math.round(track.z - feed.z),
+      detectionConfidence: clamp(track.confidence - age * 0.012, 0.38, 0.98),
+      threat: track.threat,
+      trackAge: age,
+      trackStatus: directObj ? "live" : "memory",
+      trackSources: sourceNames.length ? sourceNames : track.history.slice(0, 3).map((item) => item.source),
+      observationCount: track.history.length,
+    });
+  }
+
+  for (const obj of direct) {
+    if (![...fusedTracks.values()].some((track) => track.targetId === obj.id)) {
+      fused.push({
+        ...obj,
+        trackStatus: "new",
+        trackSources: [feed.callsign],
+        observationCount: 1,
+      });
+    }
+  }
+
+  return fused.sort((a, b) => {
+    const threatDelta = (b.threat === "critical") - (a.threat === "critical");
+    if (threatDelta) return threatDelta;
+    const statusDelta = (a.trackStatus === "live" ? 0 : 1) - (b.trackStatus === "live" ? 0 : 1);
+    if (statusDelta) return statusDelta;
+    return a.range - b.range;
+  });
+}
+
 function visibleObjects(feed) {
+  return fusedTrackObjects(feed);
+}
+
+function detectObjectsForFeed(feed) {
   const objects = [];
   const detectionRangeM = 650;
   for (const target of detectableObjects()) {
@@ -808,11 +1070,12 @@ function visibleObjects(feed) {
     const angle = Math.atan2(dy, dx);
     const heading = (feed.heading * Math.PI) / 180;
     const delta = wrapAngle(angle - heading);
-    const threat = bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
+    const unknownInCorridor = target.type.startsWith("unknown") && distanceToRouteGuard(target) <= ROUTE_GUARD_HALF_WIDTH_M + 24;
+    const threat = unknownInCorridor || bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
       ? "critical"
       : "watch";
     const detectionConfidence = clamp(
-      target.confidence * 0.62 + target.freshness * 0.24 + (target.type === "ground" ? 0.08 : 0.12) - distance / 2600,
+      target.confidence * 0.5 + target.freshness * 0.2 + (feed.npu?.confidence || 0.7) * 0.22 + (target.type === "ground" ? 0.04 : 0.08) - distance / 3000,
       0.45,
       0.98,
     );
@@ -1189,7 +1452,18 @@ function drawFieldContact(ctx, contact, width, height) {
   ctx.strokeStyle = contact.type === "rf-source" ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  if (contact.type === "vehicle") {
+  if (contact.type === "unknown-contact") {
+    ctx.moveTo(x, y - 8);
+    ctx.lineTo(x + 8, y);
+    ctx.lineTo(x, y + 8);
+    ctx.lineTo(x - 8, y);
+    ctx.closePath();
+  } else if (contact.type === "unknown-uas") {
+    ctx.moveTo(x, y - 9);
+    ctx.lineTo(x + 9, y + 7);
+    ctx.lineTo(x - 9, y + 7);
+    ctx.closePath();
+  } else if (contact.type === "vehicle") {
     ctx.rect(x - 8, y - 5, 16, 10);
   } else if (contact.type === "personnel") {
     ctx.arc(x - 4, y, 3.5, 0, Math.PI * 2);
@@ -1245,6 +1519,8 @@ function drawPov(feed, visible) {
 }
 
 function detectionClass(asset) {
+  if (asset.type === "unknown-contact") return "Unknown Ground Contact";
+  if (asset.type === "unknown-uas") return "Unknown Air Contact";
   if (asset.type === "vehicle") return "Wheeled Vehicle";
   if (asset.type === "rf-source") return "RF Source";
   if (asset.type === "personnel") return "Personnel";
@@ -1536,7 +1812,18 @@ function drawPovObjectMarker(obj) {
   povCtx.strokeStyle = critical ? "#ff5d5d" : "#f5f1e8";
   povCtx.lineWidth = critical ? 3 : 2;
   povCtx.beginPath();
-  if (obj.type === "ground" || obj.type === "vehicle") {
+  if (obj.type === "unknown-contact") {
+    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
+    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
+    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
+    povCtx.closePath();
+  } else if (obj.type === "unknown-uas") {
+    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.95);
+    povCtx.lineTo(obj.air.x + markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
+    povCtx.lineTo(obj.air.x - markerRadius * 1.1, obj.air.y + markerRadius * 0.75);
+    povCtx.closePath();
+  } else if (obj.type === "ground" || obj.type === "vehicle") {
     povCtx.rect(obj.air.x - markerRadius, obj.air.y - markerRadius / 2, markerRadius * 2, markerRadius);
   } else if (obj.type === "personnel") {
     povCtx.arc(obj.air.x - 5, obj.air.y, 4.5, 0, Math.PI * 2);
@@ -1667,17 +1954,21 @@ function drawPovQuantificationPanel(visible, width, height) {
 }
 
 function renderFeeds() {
-  document.querySelector("#asset-list").innerHTML = allFeeds()
+  document.querySelector("#asset-list").innerHTML = feeds
     .map((feed) => {
       const hit = bvhQuery(feed).find((item) => item.severity === "critical" && item.distance < item.radius);
       const dotClass = hit ? "critical" : feed.battery < 70 ? "warn" : "";
       const selected = feed.id === selectedId ? "selected" : "";
       const latClass = latencyClass(feed.latency);
       const latency = formatLatencyMs(feed.latency);
+      const npuCopy = feed.npu
+        ? `<div class="asset-meta npu-meta">Onboard ${feed.npu.device} · ${feed.npu.cue} · ${Math.round(feed.npu.confidence * 100)}%</div>`
+        : "";
       return `<button class="asset-row ${selected}" data-feed="${feed.id}">
         <div>
           <strong>${feed.callsign}</strong>
           <div class="asset-meta">${displayCommand(feed.command)} · ${formatMeters(feed.z)} · ${Math.round(feed.battery)}% · <span class="feed-latency compact ${latClass}">${latency}</span></div>
+          ${npuCopy}
         </div>
         <span class="asset-dot ${dotClass}"></span>
       </button>`;
@@ -1686,6 +1977,28 @@ function renderFeeds() {
   document.querySelectorAll(".asset-row").forEach((row) => {
     row.addEventListener("click", () => {
       selectedId = row.dataset.feed;
+      pushLog(`Selected Platform Switched To ${selectedFeed().callsign}.`);
+      renderFrame();
+    });
+  });
+}
+
+function renderFeedTabs() {
+  const el = document.querySelector("#feed-tabs");
+  if (!el) return;
+
+  el.innerHTML = feeds.map((feed) => {
+    const selected = feed.id === selectedId ? " active" : "";
+    const confidence = Math.round((feed.npu?.confidence || feed.confidence) * 100);
+    return `<button class="feed-tab${selected}" data-feed="${feed.id}" title="Show ${feed.callsign} field view">
+      ${feed.callsign}<span>${confidence}%</span>
+    </button>`;
+  }).join("");
+
+  el.querySelectorAll(".feed-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      selectedId = tab.dataset.feed;
+      pushLog(`Selected Platform Switched To ${selectedFeed().callsign}.`);
       renderFrame();
     });
   });
@@ -1703,6 +2016,7 @@ function renderFeedQuality() {
     .map((feed) => {
       const freshPct = Math.round(feed.freshness * 100);
       const confPct = Math.round(feed.confidence * 100);
+      const npuPct = Math.round((feed.npu?.confidence || feed.confidence) * 100);
       const latClass = latencyClass(feed.latency);
       const latency = formatLatencyMs(feed.latency);
       return `<div class="feed-row">
@@ -1710,6 +2024,7 @@ function renderFeedQuality() {
         <div class="feed-metrics">
           <div class="metric-bar"><span class="metric-label">Fresh</span><div class="bar-track"><span class="bar-fill" style="width:${freshPct}%"></span></div></div>
           <div class="metric-bar"><span class="metric-label">Conf</span><div class="bar-track"><span class="bar-fill" style="width:${confPct}%"></span></div></div>
+          <div class="metric-bar"><span class="metric-label">NPU</span><div class="bar-track"><span class="bar-fill" style="width:${npuPct}%"></span></div></div>
         </div>
       </div>`;
     })
@@ -1731,11 +2046,14 @@ function renderStagedPacket() {
 function renderHardware(feed, hits) {
   const status = modeCopy();
   const bvhMs = 8.8 + hits.length * 0.7;
+  const unknowns = sceneClassTargets.filter((item) => item.type.startsWith("unknown"));
+  const npuReady = feeds.filter((item) => item.npu).length;
   const rows = [
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["Route Guard", `${hits.length} Checks · ${formatLatencyMs(bvhMs)}`, "Good"],
+    ["Route Guard BVH", `${hits.length} Checks · ${formatLatencyMs(bvhMs)}`, "Good"],
+    ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
   ];
@@ -1770,8 +2088,11 @@ function renderVision(scores) {
 function renderAlerts(feed, hits, scores) {
   const alerts = [];
   const critical = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
+  const visibleUnknown = visibleObjects(feed).find((obj) => obj.type.startsWith("unknown") && obj.threat === "critical");
   if (critical) {
     alerts.push(["critical", `${feed.callsign} Inside ${critical.label}; Route Correction Active`]);
+  } else if (visibleUnknown) {
+    alerts.push(["critical", `${visibleUnknown.callsign} In Route Corridor; Identify Before Passage`]);
   } else if (scores[0][0] === "Restricted Volume In POV") {
     alerts.push(["critical", "Restricted Volume In View"]);
   }
@@ -1867,7 +2188,8 @@ function renderDeniedProof() {
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
-    { name: "Route Guard BVH", status: "active", detail: "Collision / hazard avoidance running locally" },
+    { name: "Route Guard BVH", status: "active", detail: "Ray/geometry checks corridor, hazards, and unknown contacts" },
+    { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },
     { name: "Drone Tasking State", status: "active", detail: `${feeds.length} drones tracked, ${swarmTasking.retaskCount} retasks` },
@@ -1909,21 +2231,23 @@ function renderMissionEvidence(feed, hits, scores) {
   if (!el) return;
 
   const allContacts = detectableObjects();
+  const unknownCount = sceneClassTargets.filter((item) => item.type.startsWith("unknown")).length;
+  const npuCount = feeds.filter((item) => item.npu).length;
   const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
   const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   const routeState = routeConflict ? "Reroute Active" : "Corridor Guarded";
   const strongestCue = scores.length > 0 ? `${scores[0][0]} ${Math.round(scores[0][1] * 100)}%` : "No Cue";
-  const criteria = JUDGING_CRITERIA.map((criterion) => {
+  const signals = MISSION_SIGNALS.map((signal) => {
     let detail;
-    if (criterion.label === "Technical Demo") {
-      detail = `${feeds.length} Drones · ${allContacts.length} Contacts · ${formatLatencyMs(avgLatency)} Avg Feed`;
-    } else if (criterion.label === "Military Impact") {
-      detail = `${formatMeters(routeLengthMeters())} Route · ${routeState} · ${syncGateLabel()}`;
+    if (signal.kind === "system") {
+      detail = `${npuCount} Drone NPUs · ${allContacts.length} Contacts · ${formatLatencyMs(avgLatency)} Avg Feed`;
+    } else if (signal.kind === "route") {
+      detail = `${formatMeters(routeLengthMeters())} Route · ${unknownCount} Unknowns · ${routeState}`;
     } else {
       detail = `Backpack Edge C2 · ${Math.round(laptopBattery)}% Power · ${swarmTasking.history.length} Local Cmds`;
     }
     return `<div class="evidence-card">
-      <span>${criterion.label} ${criterion.weight}%</span>
+      <span>${signal.label}</span>
       <strong>${detail}</strong>
     </div>`;
   }).join("");
@@ -1936,7 +2260,7 @@ function renderMissionEvidence(feed, hits, scores) {
       <small>${feed.callsign}: ${displayCommand(feed.command)} · Cue: ${strongestCue}</small>
       <small>${ROUTE_GUARD_SCENARIO.cvLane}</small>
     </div>
-    ${criteria}
+    ${signals}
   `;
 }
 
@@ -1999,7 +2323,7 @@ function renderFrame() {
   currentPosture = computePosture();
   document.querySelector("#frame-counter").textContent = simPaused
     ? "Paused"
-    : "Problem Statement 2 · Field C2 View · Cut Off From Internet And Command";
+    : "Field C2 View · Internet Lost · Command Reachback Lost";
   setText(
     "#power-posture-label",
     `${displayTier(currentPosture.tier)} · ${Math.round(laptopBattery)}%`,
