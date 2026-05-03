@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Two-to-five-minute judging demo script covering the route-guard denied
+  connectivity story, the exact operator beats, rubric close, and Strix Intel
+  NPU real-CV integration lane with fallback language.
 - Local C2 state-first proof path: every operator tasking or retasking action now persists to local mission state, audit log, and outbound sync queue BEFORE any enterprise export can run. Exports are deterministic offline artifacts derived from persisted state.
 - `cancel_task()` method on `MissionStateStore` for retasking/cancellation that follows the same state-first guarantee: persists state, audit log, and sync queue entry before any export.
 - `verify_state_first()` method on `MissionStateStore` for checking that all three proofs (state persisted, audit logged, sync enqueued) are complete for an entity — the first-class proof path for local C2 authority.
@@ -47,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playwright visual test verifying offline swarm control: commands issue while offline, sync gate holds staged packets, degraded mode transitions correctly, and the operator surface remains functional without connectivity.
 
 ### Changed
+- Made the dashboard explicitly state the Problem Statement 2 route-guard
+  scenario and judging evidence: cut off from internet and command, local C2
+  holds the corridor, and visible Technical Demo, Military Impact, and
+  Creativity proof points. Added the Strix Intel NPU real-CV lane as an
+  integration hook without making it a requirement for local C2.
 - Standardized the browser demo on capitalized display copy and reframed the
   selected surface as a synthesized 3D Field C2 View with priority contacts.
 - Replaced the selected-feed forward terrain/corridor POV with a 3D field view

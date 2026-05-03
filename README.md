@@ -4,7 +4,8 @@ TAC-FUSE is a local-first edge command-and-control emulator for hardened field l
 
 The core demo is the local C2 loop: cached theater view, drone swarm state, operator tasking, local mission database, prioritized alerts, and deferred Maven/Foundry sync. Local inference is a supporting capability. The SigLIP/OpenVINO path shows that the edge node can classify or prioritize identifiable objects from local feeds, but the application must remain useful without Intel NPU hardware, cloud inference, or model downloads.
 
-See `docs/problem_statement_alignment.md` for the project-level targeting rules.
+See `docs/problem_statement_alignment.md` for the project-level targeting
+rules and `docs/two_to_five_minute_demo.md` for the short judging demo script.
 
 ## Quick Start
 
@@ -41,6 +42,16 @@ models/siglip2-field-npu/
 ```
 
 Set `TAC_FUSE_SIGLIP_MODEL_DIR` if the exported model lives elsewhere. Set `TAC_FUSE_SIGLIP_DEVICE=NPU` on Intel NPU systems, or `CPU` for parity checks.
+
+For the Strix real-CV integration lane:
+
+```bash
+TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
+```
+
+If this reports ready, use it as the local CV proof point in the demo. If it is
+not ready, keep the demo on the denied-connectivity C2 path and describe the
+NPU lane as integration work.
 
 ## Foundry Boundary
 

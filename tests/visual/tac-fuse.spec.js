@@ -88,6 +88,12 @@ test("operator surface is dense and the selected POV is animated", async ({ page
 
   await expect(page.locator("#pov-title")).toContainText("3D Field View");
   await expect(page.locator("#frame-counter")).toContainText("Field C2 View");
+  await expect(page.locator("#frame-counter")).toContainText("Problem Statement 2");
+  await expect(page.locator("#mission-evidence")).toContainText("Cut Off Route Guard");
+  await expect(page.locator("#mission-evidence")).toContainText("Technical Demo 35%");
+  await expect(page.locator("#mission-evidence")).toContainText("Military Impact 30%");
+  await expect(page.locator("#mission-evidence")).toContainText("Creativity 25%");
+  await expect(page.locator("#mission-evidence")).toContainText("Strix Intel NPU CV Lane");
   await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
   await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
   await expect(page.locator(".metric-strip")).toContainText("Power");

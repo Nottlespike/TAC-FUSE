@@ -42,6 +42,17 @@ const ROUTE_GUARD_PATH = [
   { x: 950, y: 535 },
   { x: 1138, y: 450 },
 ];
+const ROUTE_GUARD_SCENARIO = {
+  title: "Problem Statement 2",
+  mission: "Cut Off Route Guard",
+  summary: "Internet Gone · Command Gone · Local C2 Holds The Corridor",
+  cvLane: "Strix Intel NPU CV Lane · Integration Hook",
+};
+const JUDGING_CRITERIA = [
+  { label: "Technical Demo", weight: 35 },
+  { label: "Military Impact", weight: 30 },
+  { label: "Creativity", weight: 25 },
+];
 
 // Contributor feeds to the fusion node - each has freshness/confidence/latency
 const feeds = [
@@ -359,6 +370,16 @@ function formatLatencyMs(latencyMs) {
 
 function formatMeters(meters) {
   return `${Math.round(meters).toLocaleString()} m`;
+}
+
+function routeLengthMeters() {
+  let total = 0;
+  for (let index = 1; index < ROUTE_GUARD_PATH.length; index += 1) {
+    const prev = ROUTE_GUARD_PATH[index - 1];
+    const next = ROUTE_GUARD_PATH[index];
+    total += Math.hypot(next.x - prev.x, next.y - prev.y);
+  }
+  return total;
 }
 
 function displayCommand(command) {
@@ -1731,10 +1752,10 @@ function renderHardware(feed, hits) {
   setText("#fusion-badge", criticalHit ? "Route Guard Rerouting" : `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
-    "1.2 km Local AOI · Tracks And Route Zones",
+    "Route Guard · Cut Off From Command · Laptop C2 Holds Corridor",
   );
   setText("#range-label", nearestHit ? `${formatMeters(nearestHit.distance)}` : "Clear");
-  setText("#pov-title", `${feed.callsign} 3D Field View`);
+  setText("#pov-title", `${feed.callsign} Route Guard 3D Field View`);
 }
 
 function renderVision(scores) {
@@ -1883,6 +1904,42 @@ function renderDeniedProof() {
   `;
 }
 
+function renderMissionEvidence(feed, hits, scores) {
+  const el = document.querySelector("#mission-evidence");
+  if (!el) return;
+
+  const allContacts = detectableObjects();
+  const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
+  const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
+  const routeState = routeConflict ? "Reroute Active" : "Corridor Guarded";
+  const strongestCue = scores.length > 0 ? `${scores[0][0]} ${Math.round(scores[0][1] * 100)}%` : "No Cue";
+  const criteria = JUDGING_CRITERIA.map((criterion) => {
+    let detail;
+    if (criterion.label === "Technical Demo") {
+      detail = `${feeds.length} Drones · ${allContacts.length} Contacts · ${formatLatencyMs(avgLatency)} Avg Feed`;
+    } else if (criterion.label === "Military Impact") {
+      detail = `${formatMeters(routeLengthMeters())} Route · ${routeState} · ${syncGateLabel()}`;
+    } else {
+      detail = `Backpack Edge C2 · ${Math.round(laptopBattery)}% Power · ${swarmTasking.history.length} Local Cmds`;
+    }
+    return `<div class="evidence-card">
+      <span>${criterion.label} ${criterion.weight}%</span>
+      <strong>${detail}</strong>
+    </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="evidence-card evidence-scenario">
+      <span>${ROUTE_GUARD_SCENARIO.title}</span>
+      <strong>${ROUTE_GUARD_SCENARIO.mission}</strong>
+      <em>${ROUTE_GUARD_SCENARIO.summary}</em>
+      <small>${feed.callsign}: ${displayCommand(feed.command)} · Cue: ${strongestCue}</small>
+      <small>${ROUTE_GUARD_SCENARIO.cvLane}</small>
+    </div>
+    ${criteria}
+  `;
+}
+
 function renderSwarmC2Status() {
   // Update the topbar feed summary with swarm C2 metrics
   const feedCountEl = document.querySelector("#feed-count");
@@ -1936,12 +1993,13 @@ function renderFrame() {
   renderAlerts(feed, hits, scores);
   renderSwarmC2();
   renderDeniedProof();
+  renderMissionEvidence(feed, hits, scores);
   renderMissionLog();
   updateModeChrome();
   currentPosture = computePosture();
   document.querySelector("#frame-counter").textContent = simPaused
     ? "Paused"
-    : "3D Field C2 View With Priority Contacts";
+    : "Problem Statement 2 · Field C2 View · Cut Off From Internet And Command";
   setText(
     "#power-posture-label",
     `${displayTier(currentPosture.tier)} · ${Math.round(laptopBattery)}%`,

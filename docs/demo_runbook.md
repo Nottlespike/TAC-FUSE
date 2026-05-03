@@ -111,6 +111,10 @@ Run with: `bash docs/check_rtx_prereqs.sh` (or `uv run bash` if on a system with
 
 ## 3. Exact Demo Sequence
 
+For a tight judging slot, use `docs/two_to_five_minute_demo.md`. The long
+sequence below is the operator/support-engineer runbook; the short script is
+the talk track.
+
 ### 3.1 Phase 0 — Environment Bootstrap (0–2 min)
 
 ```bash
