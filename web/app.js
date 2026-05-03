@@ -2383,7 +2383,7 @@ function renderDeniedProof() {
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
-    { name: "Route Guard BVH", status: "active", detail: "Ray/geometry checks corridor, hazards, and unknown contacts" },
+    { name: "Route Optimizer", status: "active", detail: `${activeRoutePlan.lane} geometry scored plan ${activeRoutePlan.score}` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },
@@ -2431,7 +2431,8 @@ function renderMissionEvidence(feed, hits, scores) {
   const trackCount = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
   const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
   const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
-  const routeState = routeConflict ? "Reroute Active" : "Corridor Guarded";
+  const routePlanFresh = activeRoutePlan.version > 0 && simTime - activeRoutePlan.updatedAt <= 22;
+  const routeState = routePlanFresh ? activeRoutePlan.status : routeConflict ? "Reroute Active" : "Corridor Guarded";
   const strongestCue = scores.length > 0 ? `${scores[0][0]} ${Math.round(scores[0][1] * 100)}%` : "No Cue";
   const signals = MISSION_SIGNALS.map((signal) => {
     let detail;
@@ -2453,7 +2454,7 @@ function renderMissionEvidence(feed, hits, scores) {
       <span>${ROUTE_GUARD_SCENARIO.title}</span>
       <strong>${ROUTE_GUARD_SCENARIO.mission}</strong>
       <em>${ROUTE_GUARD_SCENARIO.summary}</em>
-      <small>${feed.callsign}: ${displayCommand(feed.command)} · Cue: ${strongestCue}</small>
+      <small>${feed.callsign}: ${displayCommand(feed.command)} · Plan: ${activeRoutePlan.lane} ${activeRoutePlan.score} · Cue: ${strongestCue}</small>
       <small>${ROUTE_GUARD_SCENARIO.cvLane}</small>
     </div>
     ${signals}
@@ -2626,12 +2627,7 @@ document.querySelector("#emergency-stop").addEventListener("click", () => issueC
 document.querySelector("#sync-now").addEventListener("click", () => triggerSync());
 document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
-document.querySelector("#toggle-bvh").addEventListener("click", () => {
-  rayPath = rayPath === "cuda" ? "cpu" : "cuda";
-  pushLog(
-    `Route Guard Switched To ${rayPath === "cuda" ? "CUDA/RTX BVH Lane" : "CPU Parity Path"} Locally.`,
-  );
-});
+document.querySelector("#replan-route").addEventListener("click", () => replanRoute());
 
 function setConnectivityMode(mode) {
   connectivityMode = mode;
