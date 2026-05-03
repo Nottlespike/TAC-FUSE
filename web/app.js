@@ -8,6 +8,7 @@ const AOI_TILE = {
   meshStepM: 120,
 };
 const BASE = { x: 120, y: 850 };
+const FIELD_VIEW_ANCHOR = { x: 610, y: 590, z: 120 };
 const FIELD_VIEW_DEFAULT = {
   yaw: 0,
   pitch: 0.86,
@@ -1235,17 +1236,18 @@ function associateTrack(observation) {
 }
 
 function fusedTrackObjects(feed) {
+  void feed;
   const fused = [];
+  const reference = FIELD_VIEW_ANCHOR;
 
   for (const track of fusedTracks.values()) {
     const age = simTime - track.lastSeen;
     if (age > TRACK_MEMORY_SECONDS) continue;
-    const dx = track.x - feed.x;
-    const dy = track.y - feed.y;
+    const dx = track.x - reference.x;
+    const dy = track.y - reference.y;
     const range = Math.round(Math.hypot(dx, dy));
     const angle = Math.atan2(dy, dx);
-    const heading = (feed.heading * Math.PI) / 180;
-    const delta = wrapAngle(angle - heading);
+    const delta = wrapAngle(angle);
     const liveSources = Array.from(track.sources);
     const sourceNames = liveSources.length
       ? liveSources
@@ -1266,7 +1268,7 @@ function fusedTrackObjects(feed) {
       classifierCue: track.classifierCue,
       range,
       bearingDeg: Math.round(((delta * 180) / Math.PI + 360) % 360),
-      altitudeDelta: Math.round(track.z - feed.z),
+      altitudeDelta: Math.round(track.z - reference.z),
       detectionConfidence: clamp(track.confidence - age * 0.012, 0.38, 0.98),
       threat: track.threat,
       affiliation: track.affiliation,
@@ -1910,10 +1912,11 @@ function mapProjectionScale(width, height) {
 }
 
 function projectPovMapPoint(feed, point, width, height, zRelativeM = 0) {
+  void feed;
   const scale = mapProjectionScale(width, height) * fieldView.zoom;
-  const dx = point.x - feed.x;
-  const dy = point.y - feed.y;
-  const cameraYaw = fieldView.yaw - ((feed.heading || 0) * Math.PI) / 180;
+  const dx = point.x - FIELD_VIEW_ANCHOR.x;
+  const dy = point.y - FIELD_VIEW_ANCHOR.y;
+  const cameraYaw = fieldView.yaw;
   const cos = Math.cos(cameraYaw);
   const sin = Math.sin(cameraYaw);
   const rotatedX = dx * cos - dy * sin;
@@ -1925,7 +1928,8 @@ function projectPovMapPoint(feed, point, width, height, zRelativeM = 0) {
 }
 
 function povRelativeHeading(feed, headingDeg = 0) {
-  return headingDeg + (fieldView.yaw * 180) / Math.PI - (feed.heading || 0);
+  void feed;
+  return headingDeg + (fieldView.yaw * 180) / Math.PI;
 }
 
 function drawPovMapBackground(width, height) {
@@ -1945,11 +1949,12 @@ function drawPovMapBackground(width, height) {
 }
 
 function drawPov3DGrid(feed, width, height) {
+  void feed;
   const extent = 720;
   const step = 120;
   const anchor = {
-    x: Math.round(feed.x / step) * step,
-    y: Math.round(feed.y / step) * step,
+    x: Math.round(FIELD_VIEW_ANCHOR.x / step) * step,
+    y: Math.round(FIELD_VIEW_ANCHOR.y / step) * step,
   };
 
   povCtx.save();
@@ -1966,7 +1971,7 @@ function drawPov3DGrid(feed, width, height) {
         point,
         width,
         height,
-        terrainHeightAt(point.x, point.y) - feed.z,
+        terrainHeightAt(point.x, point.y) - FIELD_VIEW_ANCHOR.z,
       );
       if (u === -extent) povCtx.moveTo(projected.x, projected.y);
       else povCtx.lineTo(projected.x, projected.y);
@@ -1981,7 +1986,7 @@ function drawPov3DGrid(feed, width, height) {
         point,
         width,
         height,
-        terrainHeightAt(point.x, point.y) - feed.z,
+        terrainHeightAt(point.x, point.y) - FIELD_VIEW_ANCHOR.z,
       );
       if (v === -extent) povCtx.moveTo(projected.x, projected.y);
       else povCtx.lineTo(projected.x, projected.y);
@@ -1997,7 +2002,7 @@ function projectPovTerrainPoint(feed, point, width, height) {
     point,
     width,
     height,
-    terrainHeightAt(point.x, point.y) - feed.z,
+    terrainHeightAt(point.x, point.y) - FIELD_VIEW_ANCHOR.z,
   );
 }
 
@@ -2061,14 +2066,14 @@ function drawPovRouteGuardCorridor(feed, width, height) {
 function drawPovHazards(feed, width, height) {
   const scale = mapProjectionScale(width, height);
   for (const hazard of hazards) {
-    const distance = Math.hypot(hazard.x - feed.x, hazard.y - feed.y);
+    const distance = Math.hypot(hazard.x - FIELD_VIEW_ANCHOR.x, hazard.y - FIELD_VIEW_ANCHOR.y);
     if (distance > 780) continue;
     const projected = projectPovMapPoint(
       feed,
       hazard,
       width,
       height,
-      terrainHeightAt(hazard.x, hazard.y) - feed.z,
+      terrainHeightAt(hazard.x, hazard.y) - FIELD_VIEW_ANCHOR.z,
     );
     const critical = hazard.severity === "critical";
     povCtx.save();
@@ -2087,7 +2092,7 @@ function drawPovHazards(feed, width, height) {
 }
 
 function drawPovDetectionFrustum(feed, width, height) {
-  const origin = projectPovMapPoint(feed, feed, width, height, 0);
+  const origin = projectPovMapPoint(feed, feed, width, height, feed.z - FIELD_VIEW_ANCHOR.z);
   const heading = (feed.heading * Math.PI) / 180;
   const range = 560;
   const left = {
@@ -2103,14 +2108,14 @@ function drawPovDetectionFrustum(feed, width, height) {
     left,
     width,
     height,
-    terrainHeightAt(left.x, left.y) - feed.z,
+    terrainHeightAt(left.x, left.y) - FIELD_VIEW_ANCHOR.z,
   );
   const rightProjected = projectPovMapPoint(
     feed,
     right,
     width,
     height,
-    terrainHeightAt(right.x, right.y) - feed.z,
+    terrainHeightAt(right.x, right.y) - FIELD_VIEW_ANCHOR.z,
   );
 
   povCtx.save();
@@ -2153,9 +2158,9 @@ function drawPovObjects(feed, visible, width, height) {
         obj,
         width,
         height,
-        terrainHeightAt(obj.x, obj.y) - feed.z,
+        terrainHeightAt(obj.x, obj.y) - FIELD_VIEW_ANCHOR.z,
       ),
-      air: projectPovMapPoint(feed, obj, width, height, obj.z - feed.z),
+      air: projectPovMapPoint(feed, obj, width, height, obj.z - FIELD_VIEW_ANCHOR.z),
     }))
     .sort((a, b) => a.ground.y - b.ground.y);
   overlay.dataset.identityReport = sorted
@@ -2168,6 +2173,7 @@ function drawPovObjects(feed, visible, width, height) {
     .join("|");
   overlay.dataset.selectedPlatform = feed.id;
   overlay.dataset.selectedContact = selectedContactId || "";
+  overlay.dataset.fieldViewAnchor = `${FIELD_VIEW_ANCHOR.x},${FIELD_VIEW_ANCHOR.y},${FIELD_VIEW_ANCHOR.z}`;
   const labeledIds = new Set(priorityLabeledObjects(sorted, feed.id).map((obj) => obj.id));
   const placedLabelRects = [];
 
@@ -2446,9 +2452,9 @@ function selectFusedObject(obj) {
   const targetId = obj.targetId || obj.id;
   const friendly = feeds.find((feed) => feed.id === targetId);
   if (friendly) {
-    selectPlatformPov(friendly.id, {
+    selectPlatform(friendly.id, {
       selectedContactId: obj.id,
-      log: `Selected ${friendly.callsign} POV From Shared Fusion View.`,
+      log: `Selected ${friendly.callsign} In Shared Field View.`,
     });
   } else {
     selectedContactId = obj.id;
@@ -2517,9 +2523,9 @@ function drawPovTelemetry(feed, visible, width, height) {
   povCtx.fillRect(18, 18, 260, 78);
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
-  povCtx.fillText(`${feed.callsign} 3D POV · Fused Tracks`, 32, 42);
-  povCtx.fillText(`FUSED ${visible.length}  HDG ${Math.round((feed.heading + 360) % 360)}`, 32, 66);
-  povCtx.fillText(`ALT ${formatMeters(feed.z)}  BAT ${Math.round(feed.battery)}%`, 32, 90);
+  povCtx.fillText("Fused 3D Field View", 32, 42);
+  povCtx.fillText(`SELECTED ${feed.callsign}  HDG ${Math.round((feed.heading + 360) % 360)}`, 32, 66);
+  povCtx.fillText(`FUSED ${visible.length}  BAT ${Math.round(feed.battery)}%`, 32, 90);
 }
 
 function drawPovQuantificationPanel(visible, width, height) {
@@ -2584,7 +2590,7 @@ function renderFeeds() {
     .join("");
   document.querySelectorAll(".asset-row").forEach((row) => {
     row.addEventListener("click", () => {
-      selectPlatformPov(row.dataset.feed);
+      selectPlatform(row.dataset.feed);
     });
   });
 }
@@ -2592,39 +2598,43 @@ function renderFeeds() {
 function renderFeedTabs() {
   const el = document.querySelector("#feed-tabs");
   if (!el) return;
+  const signature = feeds.map((feed) => feed.id).join("|");
 
-  el.innerHTML = feeds.map((feed) => {
-    const selected = feed.id === selectedId ? " active" : "";
-    const confidence = Math.round((feed.npu?.confidence || feed.confidence) * 100);
-    const active = feed.id === selectedId;
-    return `<button type="button" class="feed-tab${selected}" data-feed="${feed.id}" aria-pressed="${active}" aria-current="${active ? "true" : "false"}" title="Show ${feed.callsign} POV">
-      ${feed.callsign}<span>POV · ${confidence}%</span>
-    </button>`;
-  }).join("");
+  if (el.dataset.signature !== signature) {
+    el.dataset.signature = signature;
+    el.innerHTML = feeds.map((feed) => {
+      return `<button type="button" class="feed-tab" data-feed="${feed.id}" aria-pressed="false" aria-current="false" title="Select ${feed.callsign}">
+        ${feed.callsign}<span class="feed-tab-confidence"></span>
+      </button>`;
+    }).join("");
 
-  el.querySelectorAll(".feed-tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      selectPlatformPov(tab.dataset.feed);
+    el.querySelectorAll(".feed-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        selectPlatform(tab.dataset.feed);
+      });
     });
-  });
+  }
+
+  for (const feed of feeds) {
+    const tab = el.querySelector(`.feed-tab[data-feed="${feed.id}"]`);
+    if (!tab) continue;
+    const active = feed.id === selectedId;
+    const confidence = Math.round((feed.npu?.confidence || feed.confidence) * 100);
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-pressed", String(active));
+    tab.setAttribute("aria-current", active ? "true" : "false");
+    const confidenceEl = tab.querySelector(".feed-tab-confidence");
+    if (confidenceEl) confidenceEl.textContent = `${confidence}%`;
+  }
 }
 
-function selectPlatformPov(feedId, options = {}) {
+function selectPlatform(feedId, options = {}) {
   const feed = feeds.find((item) => item.id === feedId);
   if (!feed) return;
   selectedId = feed.id;
   selectedContactId = options.selectedContactId || null;
-  resetFieldViewForPov();
-  pushLog(options.log || `${feed.callsign} POV Selected; Shared Fusion Tracks Retained.`);
+  pushLog(options.log || `${feed.callsign} Selected In Shared Field View.`);
   renderFrame();
-}
-
-function resetFieldViewForPov() {
-  fieldView.yaw = FIELD_VIEW_DEFAULT.yaw;
-  fieldView.pitch = FIELD_VIEW_DEFAULT.pitch;
-  fieldView.zoom = FIELD_VIEW_DEFAULT.zoom;
-  fieldView.dragging = false;
-  fieldView.moved = false;
 }
 
 function renderFeedQuality() {
@@ -2707,7 +2717,7 @@ function renderHardware(feed, hits) {
     "Route Guard · Cut Off From Command · Laptop C2 Holds Corridor",
   );
   setText("#range-label", nearestHit ? `${formatMeters(nearestHit.distance)}` : "Clear");
-  setText("#pov-title", `${feed.callsign} Route Guard 3D Field View`);
+  setText("#pov-title", "Route Guard 3D Field View");
 }
 
 function renderVision(scores) {
@@ -2905,8 +2915,6 @@ function renderFrame() {
   const visible = visibleObjects(feed);
   const hits = bvhQuery(feed);
   const scores = classifyFrame(feed, visible);
-  const povTitle = document.querySelector("#pov-title");
-  if (povTitle) povTitle.textContent = `${feed.callsign} POV · Route Guard 3D Field View`;
   drawSwarmMap();
   drawPov(feed, visible);
   renderFeeds();

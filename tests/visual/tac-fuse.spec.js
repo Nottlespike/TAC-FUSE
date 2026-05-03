@@ -82,7 +82,7 @@ test("offline swarm control: commands queue, sync gate holds, degraded works", a
   });
 });
 
-test("operator surface is dense and the selected POV is animated", async ({ page }) => {
+test("operator surface is dense and the selected platform is animated", async ({ page }) => {
   await page.goto(demoUrl);
   await page.waitForTimeout(900);
 
@@ -173,11 +173,18 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(evidenceOverlap).toEqual([]);
 
   const alphaFusionIds = await page.locator("#pov-overlay").getAttribute("data-fusion-ids");
+  const alphaFieldAnchor = await page.locator("#pov-overlay").getAttribute("data-field-view-anchor");
+  await expect(page.locator('.feed-tab[data-feed="uav-alpha"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#pov-overlay")).toHaveAttribute("data-selected-platform", "uav-alpha");
   await page.locator(".target-label").first().dispatchEvent("click");
   await expect(page.locator(".target-label.selected-contact")).toBeVisible();
 
-  await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());
+  await page.locator('.feed-tab[data-feed="uav-bravo"]').click();
   await page.waitForTimeout(300);
+  await expect(page.locator('.feed-tab[data-feed="uav-bravo"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#pov-title")).toHaveText("Route Guard 3D Field View");
+  await expect(page.locator("#pov-overlay")).toHaveAttribute("data-selected-platform", "uav-bravo");
+  await expect(page.locator("#pov-overlay")).toHaveAttribute("data-field-view-anchor", alphaFieldAnchor);
   const bravoFusionIds = await page.locator("#pov-overlay").getAttribute("data-fusion-ids");
   expect(bravoFusionIds).toBe(alphaFusionIds);
   const bravoIdentityReport = await page.locator("#pov-overlay").getAttribute("data-identity-report");

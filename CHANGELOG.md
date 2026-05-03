@@ -78,6 +78,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local ray-query/BVH boundary with RTX-runtime inspection and software-validation output shape.
 - RTX prerequisite script referenced by the live demo runbook.
 - Browser-based graphics emulator with a live swarm world, selected-drone POV, operator commands, online/offline queue behavior, BVH nodes, and local ray-query visualization.
+- Clickable Alpha/Bravo/Charlie/Delta selector pills for the 3D field view;
+  each platform can be selected and highlighted without moving the shared fused
+  field camera or changing track memory.
 - Offline-first hackathon UI that foregrounds local C2, cached maps, drone tasking, sensor cues, SQLite persistence, and staged enterprise export without live/degraded mode controls.
 - Web demo reframed as laptop-local fused sensor array: fusion node is the authority (not cloud), drones shown as contributor feeds with freshness/confidence/latency, POV is one feed among several fused sources, staged Maven/Foundry mission packet shown, reconnect upload presented as operator-gated sync action (not live dependency), sync idle/staged pill in topbar, contributor feed latency badges inline, no empty-card placeholders, no tech-stack advertising in UI copy.
 - Foundry-compatible local export artifacts for mission events, asset states, tasks, alerts, and sync manifest.
