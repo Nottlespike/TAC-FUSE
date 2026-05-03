@@ -14,3 +14,12 @@ def test_connectivity_controller_persists_manual_override() -> None:
         "SELECT value FROM demo_state WHERE key = 'connectivity_mode'"
     ).fetchone()
     assert row[0] == "offline"
+
+
+def test_degraded_mode_blocks_external_sync() -> None:
+    store = MissionStateStore()
+    controller = create_connectivity_controller(store)
+
+    controller.set_manual_override(ConnectivityMode.DEGRADED)
+
+    assert not controller.is_external_sync_allowed()

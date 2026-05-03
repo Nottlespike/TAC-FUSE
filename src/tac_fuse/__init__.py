@@ -36,9 +36,11 @@ from tac_fuse.ray_query import (
 )
 from tac_fuse.replay import (
     AssetTrack,
+    RestrictedEntry,
     RouteConflict,
     SeededReplayEngine,
     demo_conflicts,
+    demo_restricted_entries,
     generate_scenario,
 )
 
@@ -58,11 +60,13 @@ __all__ = [
     "POVObject",
     "RayQueryResult",
     "RayQueryStatus",
+    "RestrictedEntry",
     "RouteConflict",
     "SeededReplayEngine",
     "build_foundry_export",
     "create_connectivity_controller",
     "demo_conflicts",
+    "demo_restricted_entries",
     "default_primitives",
     "evaluate_bvh",
     "generate_pov_sequence",

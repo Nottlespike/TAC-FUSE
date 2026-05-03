@@ -1,4 +1,9 @@
-from tac_fuse.replay import SeededReplayEngine, demo_conflicts, generate_scenario
+from tac_fuse.replay import (
+    SeededReplayEngine,
+    demo_conflicts,
+    demo_restricted_entries,
+    generate_scenario,
+)
 
 
 def test_generate_scenario_is_deterministic() -> None:
@@ -17,4 +22,5 @@ def test_seeded_replay_engine_matches_contract() -> None:
 
     assert len(frames) == 4
     assert len(frames[0]) == 5
+    assert engine.restricted_entries == demo_restricted_entries(engine._scenario)
     assert demo_conflicts(frames)[0].to_dict()["asset_ids"] == ["uav-alpha", "uav-charlie"]

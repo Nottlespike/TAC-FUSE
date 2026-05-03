@@ -42,7 +42,7 @@ class ConnectivityController:
         return self._current_mode
 
     def is_external_sync_allowed(self) -> bool:
-        return self._current_mode is not ConnectivityMode.OFFLINE
+        return self._current_mode is ConnectivityMode.ONLINE
 
     def add_mode_change_callback(self, callback: Callable[[ConnectivityMode], None]) -> None:
         self._callbacks.append(callback)

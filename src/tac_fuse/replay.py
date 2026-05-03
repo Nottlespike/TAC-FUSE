@@ -47,6 +47,25 @@ class RouteConflict:
         return payload
 
 
+@dataclass(frozen=True)
+class RestrictedEntry:
+    entry_id: str
+    asset_id: str
+    zone_id: str
+    entry_timestamp_s: float
+    lat: float
+    lon: float
+    radius_m: float
+    severity: str = "watch"
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @property
+    def entry_timestamp(self) -> float:
+        return self.entry_timestamp_s
+
+
 def _offset_lat_lon(lat: float, lon: float, north_m: float, east_m: float) -> tuple[float, float]:
     meters_per_deg_lat = 111_320.0
     meters_per_deg_lon = meters_per_deg_lat * cos(radians(lat))
@@ -211,6 +230,26 @@ def demo_conflicts(scenario: list[list[AssetTrack]] | None = None) -> list[Route
     ]
 
 
+def demo_restricted_entries(
+    scenario: list[list[AssetTrack]] | None = None,
+) -> list[RestrictedEntry]:
+    frames = scenario or generate_scenario()
+    pivot = frames[min(7, len(frames) - 1)]
+    track = next(item for item in pivot if item.asset_id == "uav-charlie")
+    return [
+        RestrictedEntry(
+            entry_id="restricted-charlie-rf-pocket-001",
+            asset_id=track.asset_id,
+            zone_id="rf-denial-pocket-west",
+            entry_timestamp_s=track.timestamp_s,
+            lat=track.lat,
+            lon=track.lon,
+            radius_m=85.0,
+            severity="watch",
+        )
+    ]
+
+
 class SeededReplayEngine:
     def __init__(
         self,
@@ -229,6 +268,7 @@ class SeededReplayEngine:
             step_s=tick_interval_sec,
             seed=seed,
         )
+        self.restricted_entries = demo_restricted_entries(self._scenario)
         self.route_conflicts = demo_conflicts(self._scenario)
 
     def generate(self) -> list[list[AssetTrack]]:

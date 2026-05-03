@@ -63,6 +63,25 @@ class MissionStateStore:
                 payload TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS restricted_entries (
+                id TEXT PRIMARY KEY,
+                asset_id TEXT NOT NULL,
+                zone_id TEXT NOT NULL,
+                entry_timestamp_s REAL NOT NULL,
+                severity TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS route_conflicts (
+                id TEXT PRIMARY KEY,
+                conflict_id TEXT NOT NULL,
+                asset_ids TEXT NOT NULL,
+                timestamp_s REAL NOT NULL,
+                severity TEXT NOT NULL,
+                range_m REAL NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sync_queue (
                 id TEXT PRIMARY KEY,
                 entity_type TEXT NOT NULL,
@@ -204,6 +223,114 @@ class MissionStateStore:
             self._audit("alert_created", "alert", alert["id"], message)
         return alert
 
+    def insert_restricted_entry(self, entry: Any) -> dict[str, Any]:
+        payload = self._object_payload(entry)
+        record = {
+            "id": str(payload.get("entry_id") or payload.get("id") or uuid.uuid4()),
+            "asset_id": str(payload["asset_id"]),
+            "zone_id": str(payload["zone_id"]),
+            "entry_timestamp_s": float(
+                payload.get("entry_timestamp_s", payload.get("entry_timestamp", 0.0))
+            ),
+            "severity": str(payload.get("severity") or "watch"),
+            "payload": payload,
+            "created_at": self._utc_now(),
+        }
+        with self._conn:
+            cursor = self._conn.execute(
+                """
+                INSERT OR IGNORE INTO restricted_entries
+                (id, asset_id, zone_id, entry_timestamp_s, severity, payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record["id"],
+                    record["asset_id"],
+                    record["zone_id"],
+                    record["entry_timestamp_s"],
+                    record["severity"],
+                    json.dumps(record["payload"], sort_keys=True),
+                    record["created_at"],
+                ),
+            )
+            if cursor.rowcount:
+                self._enqueue_sync("restricted_entry", record["id"], "create", record)
+                self._audit(
+                    "restricted_entry_inserted",
+                    "restricted_entry",
+                    record["id"],
+                    f"{record['asset_id']} entered {record['zone_id']}",
+                )
+        return record
+
+    def insert_route_conflict(self, conflict: Any) -> dict[str, Any]:
+        payload = self._object_payload(conflict)
+        conflict_id = str(payload.get("conflict_id") or payload.get("id") or uuid.uuid4())
+        record = {
+            "id": conflict_id,
+            "conflict_id": conflict_id,
+            "asset_ids": [str(asset_id) for asset_id in payload["asset_ids"]],
+            "timestamp_s": float(payload.get("timestamp_s", payload.get("timestamp", 0.0))),
+            "severity": str(payload.get("severity") or "watch"),
+            "range_m": float(payload.get("range_m", 0.0)),
+            "payload": payload,
+            "created_at": self._utc_now(),
+        }
+        with self._conn:
+            cursor = self._conn.execute(
+                """
+                INSERT OR IGNORE INTO route_conflicts
+                (id, conflict_id, asset_ids, timestamp_s, severity, range_m, payload, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record["id"],
+                    record["conflict_id"],
+                    json.dumps(record["asset_ids"], sort_keys=True),
+                    record["timestamp_s"],
+                    record["severity"],
+                    record["range_m"],
+                    json.dumps(record["payload"], sort_keys=True),
+                    record["created_at"],
+                ),
+            )
+            if cursor.rowcount:
+                self._enqueue_sync("route_conflict", record["conflict_id"], "create", record)
+                self._audit(
+                    "route_conflict_inserted",
+                    "route_conflict",
+                    record["conflict_id"],
+                    f"Route conflict {record['conflict_id']} recorded",
+                )
+        return record
+
+    def put_dashboard_value(self, key: str, value: str) -> dict[str, str]:
+        record = {"key": key, "value": value, "updated_at": self._utc_now()}
+        with self._conn:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS demo_state (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO demo_state (key, value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (record["key"], record["value"], record["updated_at"]),
+            )
+            self._audit(
+                "dashboard_value_updated",
+                "demo_state",
+                record["key"],
+                f"Dashboard value updated: {record['key']}",
+            )
+        return record
+
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM operator_tasks WHERE id = ?", (task_id,)).fetchone()
         return self._task_from_row(row) if row else None
@@ -225,6 +352,18 @@ class MissionStateStore:
     def list_alerts(self) -> list[dict[str, Any]]:
         rows = self._conn.execute("SELECT * FROM alerts ORDER BY created_at").fetchall()
         return [self._json_row(row) for row in rows]
+
+    def list_restricted_entries(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM restricted_entries ORDER BY entry_timestamp_s, asset_id"
+        ).fetchall()
+        return [self._json_row(row) for row in rows]
+
+    def list_route_conflicts(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM route_conflicts ORDER BY timestamp_s, conflict_id"
+        ).fetchall()
+        return [self._conflict_from_row(row) for row in rows]
 
     def list_audit_events(self) -> list[dict[str, Any]]:
         rows = self._conn.execute("SELECT * FROM audit_log ORDER BY created_at").fetchall()
@@ -305,5 +444,12 @@ class MissionStateStore:
     @staticmethod
     def _sync_from_row(row: sqlite3.Row) -> dict[str, Any]:
         payload = dict(row)
+        payload["payload"] = json.loads(payload["payload"])
+        return payload
+
+    @staticmethod
+    def _conflict_from_row(row: sqlite3.Row) -> dict[str, Any]:
+        payload = dict(row)
+        payload["asset_ids"] = json.loads(payload["asset_ids"])
         payload["payload"] = json.loads(payload["payload"])
         return payload
