@@ -295,16 +295,6 @@ const TRACK_MEMORY_SECONDS = 18;
 const TRACK_PRUNE_SECONDS = 45;
 const TRACK_ASSOCIATION_RADIUS_M = 55;
 let nextTrackSerial = 1;
-const activeRoutePlan = {
-  version: 0,
-  status: "Monitoring",
-  lane: "CUDA/RTX",
-  routeOffsetM: 0,
-  score: 72,
-  target: ROUTE_GUARD_PATH[2],
-  updatedAt: 0,
-  reason: "Baseline Corridor Guard",
-};
 
 // Swarm-wide tasking state — single-operator C2 proof
 // Tracks operator commands across all drones for the denied-ops proof path
@@ -455,7 +445,6 @@ function displayCommand(command) {
     hold: "Hold",
     overwatch: "Overwatch",
     patrol: "Patrol",
-    replan: "Replan",
     relay: "Relay",
     resume: "Resume",
     return: "Return",
@@ -597,115 +586,6 @@ function issueCommandToAll(command) {
   spoolDepth = stagedCommands.length;
   syncStaged = spoolDepth > 0;
   if (syncStaged) syncWatermark = simTime;
-}
-
-function distanceToRouteOffset(point, offsetM) {
-  let minDistance = Infinity;
-  for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
-    const segment = routeSegmentOffset(ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], offsetM);
-    minDistance = Math.min(minDistance, distancePointToSegment(point, segment.a, segment.b));
-  }
-  return minDistance;
-}
-
-function candidateRouteTarget(feed, offsetM) {
-  let nearestIndex = 1;
-  let nearestDistance = Infinity;
-  for (let index = 1; index < ROUTE_GUARD_PATH.length; index += 1) {
-    const distance = Math.hypot(feed.x - ROUTE_GUARD_PATH[index].x, feed.y - ROUTE_GUARD_PATH[index].y);
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestIndex = index;
-    }
-  }
-  const nextIndex = Math.min(ROUTE_GUARD_PATH.length - 1, nearestIndex + 1);
-  const segment = routeSegmentOffset(ROUTE_GUARD_PATH[nextIndex - 1], ROUTE_GUARD_PATH[nextIndex], offsetM);
-  return segment.b;
-}
-
-function scoreRouteCandidate(feed, offsetM) {
-  let score = 100;
-  for (const hazard of hazards) {
-    const clearance = distanceToRouteOffset(hazard, offsetM) - hazard.r;
-    if (clearance < 80) score -= hazard.severity === "critical" ? 28 : 16;
-    else if (clearance < 160) score -= hazard.severity === "critical" ? 14 : 8;
-  }
-  for (const contact of sceneClassTargets) {
-    const clearance = distanceToRouteOffset(contact, offsetM);
-    if (contact.type.startsWith("unknown") && clearance < ROUTE_GUARD_HALF_WIDTH_M + 35) score -= 22;
-    else if (clearance < ROUTE_GUARD_HALF_WIDTH_M + 50) score -= 8;
-  }
-  score -= Math.max(0, 70 - feed.battery) * 0.18;
-  score -= Math.max(0, feed.latency - 80) * 0.04;
-  return clamp(score, 0, 99);
-}
-
-function planRoute(feed) {
-  const offsets = [-96, -52, 0, 52, 96];
-  const candidates = offsets
-    .map((offsetM) => ({
-      offsetM,
-      score: scoreRouteCandidate(feed, offsetM),
-      target: candidateRouteTarget(feed, offsetM),
-    }))
-    .sort((a, b) => b.score - a.score);
-  const selected = candidates[0];
-  const lane = rayPath === "cuda" ? "CUDA/RTX" : "CPU";
-  const status = selected.score >= 76 ? "Replanned" : selected.score >= 58 ? "Caution Plan" : "Hold Pending ID";
-  const targetDistance = Math.hypot(feed.x - selected.target.x, feed.y - selected.target.y);
-  const etaSeconds = Math.max(8, Math.round(targetDistance / Math.max(4, feed.speed || 18)));
-  const reason = selected.offsetM === 0
-    ? "Center Corridor Clear"
-    : selected.offsetM < 0
-      ? "West Standoff Selected"
-      : "East Standoff Selected";
-  Object.assign(activeRoutePlan, {
-    version: activeRoutePlan.version + 1,
-    status,
-    lane,
-    routeOffsetM: selected.offsetM,
-    score: Math.round(selected.score),
-    target: selected.target,
-    updatedAt: simTime,
-    reason,
-    etaSeconds,
-  });
-  feed.command = selected.score < 58 ? "hold" : "patrol";
-  feed.target = selected.target;
-  feed.plannedOffsetM = selected.offsetM;
-  return { ...activeRoutePlan };
-}
-
-function replanRoute() {
-  const feed = selectedFeed();
-  const plan = planRoute(feed);
-  const record = {
-    id: `cmd-${String(commandSeq).padStart(3, "0")}`,
-    assetId: feed.id,
-    callsign: feed.callsign,
-    command: "replan",
-    mode: "fusion-local",
-    status: "staged",
-    ts: simTime,
-    routePlan: plan,
-  };
-  commandSeq += 1;
-  stagedCommands.unshift(record);
-  stagedCommands.splice(12);
-
-  const prevCommand = swarmTasking.lastCommand[feed.id];
-  if (prevCommand && prevCommand.command !== "replan") {
-    swarmTasking.retaskCount += 1;
-  }
-  swarmTasking.lastCommand[feed.id] = { command: "replan", ts: simTime };
-  swarmTasking.history.unshift({ assetId: feed.id, callsign: feed.callsign, command: "replan", ts: simTime });
-  swarmTasking.history.splice(20);
-
-  spoolDepth = stagedCommands.length;
-  syncStaged = spoolDepth > 0;
-  syncWatermark = simTime;
-  pushLog(`${feed.callsign} Route Replanned: ${plan.status} · ${plan.lane} · Score ${plan.score}.`);
-  renderFrame();
 }
 
 function movePlanarActor(actor, target, dt, cruiseSpeed, turnRateDeg) {
@@ -1553,7 +1433,6 @@ function drawSwarmMap() {
   for (const feed of feeds) {
     drawPath(ctx, feed, width, height);
   }
-  drawActiveRoutePlan(ctx, width, height);
   for (const asset of allFeeds()) {
     drawAsset(ctx, asset, width, height);
   }
@@ -1586,35 +1465,6 @@ function drawPath(ctx, feed, width, height) {
   ctx.lineTo(end.x, end.y);
   ctx.stroke();
   ctx.setLineDash([]);
-}
-
-function drawActiveRoutePlan(ctx, width, height) {
-  if (activeRoutePlan.version === 0) return;
-  const feed = selectedFeed();
-  const start = worldToCanvas(feed, width, height);
-  const end = worldToCanvas(activeRoutePlan.target, width, height);
-  ctx.save();
-  ctx.strokeStyle = "rgba(85, 214, 166, 0.92)";
-  ctx.lineWidth = 3;
-  ctx.setLineDash([12, 7]);
-  ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  ctx.lineTo(end.x, end.y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = "#55d6a6";
-  ctx.strokeStyle = "#10171b";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(end.x, end.y, 7, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "rgba(8, 13, 15, 0.82)";
-  ctx.fillRect(end.x + 10, end.y - 18, 148, 24);
-  ctx.fillStyle = "#f2efe5";
-  ctx.font = "12px Inter, Arial";
-  ctx.fillText(`Plan ${activeRoutePlan.score} · ${activeRoutePlan.lane}`, end.x + 18, end.y - 2);
-  ctx.restore();
 }
 
 function drawRayFan(ctx, feed, width, height) {
@@ -1751,7 +1601,6 @@ function drawPov(feed, visible) {
   drawPov3DGrid(feed, width, height);
   drawPovRouteGuardCorridor(feed, width, height);
   drawPovHazards(feed, width, height);
-  drawPovActiveRoutePlan(feed, width, height);
   drawPovDetectionFrustum(feed, width, height);
   drawPovObjects(feed, visible, width, height);
   drawPovTelemetry(feed, visible, width, height);
@@ -1910,39 +1759,6 @@ function drawPovRouteGuardCorridor(feed, width, height) {
   povCtx.fillStyle = "#55d6a6";
   povCtx.font = "12px Inter, Arial";
   povCtx.fillText("Route Guard Corridor", label.x - 2, label.y - 14);
-  povCtx.restore();
-}
-
-function drawPovActiveRoutePlan(feed, width, height) {
-  if (activeRoutePlan.version === 0) return;
-  const start = projectPovTerrainPoint(feed, feed, width, height);
-  const end = projectPovTerrainPoint(feed, activeRoutePlan.target, width, height);
-  povCtx.save();
-  povCtx.strokeStyle = "rgba(85, 214, 166, 0.95)";
-  povCtx.lineWidth = 3;
-  povCtx.setLineDash([10, 7]);
-  povCtx.beginPath();
-  povCtx.moveTo(start.x, start.y);
-  povCtx.lineTo(end.x, end.y);
-  povCtx.stroke();
-  povCtx.setLineDash([]);
-  povCtx.fillStyle = "#55d6a6";
-  povCtx.strokeStyle = "rgba(8, 13, 15, 0.9)";
-  povCtx.lineWidth = 2;
-  povCtx.beginPath();
-  povCtx.arc(end.x, end.y, 7, 0, Math.PI * 2);
-  povCtx.fill();
-  povCtx.stroke();
-  povCtx.fillStyle = "rgba(8, 13, 15, 0.86)";
-  povCtx.strokeStyle = "rgba(85, 214, 166, 0.65)";
-  povCtx.fillRect(end.x + 10, end.y - 28, 154, 40);
-  povCtx.strokeRect(end.x + 10, end.y - 28, 154, 40);
-  povCtx.fillStyle = "#55d6a6";
-  povCtx.font = "700 12px Inter, Arial";
-  povCtx.fillText("Local Route Plan", end.x + 18, end.y - 12);
-  povCtx.fillStyle = "#f2efe5";
-  povCtx.font = "12px Inter, Arial";
-  povCtx.fillText(`${activeRoutePlan.status} · ${activeRoutePlan.score}`, end.x + 18, end.y + 4);
   povCtx.restore();
 }
 
@@ -2409,8 +2225,7 @@ function renderStagedPacket() {
   packetEl.innerHTML = stagedCommands
     .slice(0, 5)
     .map((cmd) => {
-      const planCopy = cmd.routePlan ? ` · ${cmd.routePlan.status} ${cmd.routePlan.score}` : "";
-      return `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${displayCommand(cmd.command)}${planCopy}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`;
+      return `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${displayCommand(cmd.command)}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`;
     })
     .join("");
 }
@@ -2422,12 +2237,14 @@ function renderHardware(feed, hits) {
   const unknowns = sceneClassTargets.filter((item) => item.type.startsWith("unknown"));
   const npuReady = feeds.filter((item) => item.npu).length;
   const liveTracks = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
-  const routePlanFresh = activeRoutePlan.version > 0 && simTime - activeRoutePlan.updatedAt <= 22;
+  const criticalHit = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
+  const nearestHit = hits[0];
+  const routeState = criticalHit ? "Blocked" : nearestHit ? "Monitoring" : "Guarded";
   const rows = [
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["Route Optimizer", `${activeRoutePlan.status} · ${activeRoutePlan.lane} · Score ${activeRoutePlan.score}`, routePlanFresh ? "Good" : "Watch"],
+    ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${rayPath.toUpperCase()}`, criticalHit ? "Watch" : "Good"],
     ["CUDA/RTX Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${rayPath.toUpperCase()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
@@ -2440,11 +2257,8 @@ function renderHardware(feed, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind.toLowerCase()}">${kind}</span></div>`,
     )
     .join("");
-  const criticalHit = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
-  const nearestHit = hits[0];
-  const routeState = criticalHit ? "Rerouting" : nearestHit ? "Monitoring" : "Clear";
-  setText("#bvh-label", routePlanFresh ? `${activeRoutePlan.status} · ${activeRoutePlan.lane}` : routeState);
-  setText("#fusion-badge", routePlanFresh ? "Route Guard Replanned" : criticalHit ? "Route Guard Rerouting" : `Route Guard ${routeState}`);
+  setText("#bvh-label", criticalHit ? "Corridor Blocked" : nearestHit ? "Corridor Monitoring" : "Corridor Guarded");
+  setText("#fusion-badge", `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
     "Route Guard · Cut Off From Command · Laptop C2 Holds Corridor",
@@ -2565,7 +2379,7 @@ function renderDeniedProof() {
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
-    { name: "Route Optimizer", status: "active", detail: `${activeRoutePlan.lane} geometry scored plan ${activeRoutePlan.score}` },
+    { name: "Automatic Corridor Guard", status: "active", detail: `${rayPath.toUpperCase()} BVH checks route hazards continuously` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },
@@ -2613,8 +2427,7 @@ function renderMissionEvidence(feed, hits, scores) {
   const trackCount = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
   const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
   const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
-  const routePlanFresh = activeRoutePlan.version > 0 && simTime - activeRoutePlan.updatedAt <= 22;
-  const routeState = routePlanFresh ? activeRoutePlan.status : routeConflict ? "Reroute Active" : "Corridor Guarded";
+  const routeState = routeConflict ? "Corridor Blocked" : "Corridor Guarded";
   const strongestCue = scores.length > 0 ? `${scores[0][0]} ${Math.round(scores[0][1] * 100)}%` : "No Cue";
   const signals = MISSION_SIGNALS.map((signal) => {
     let detail;
@@ -2636,7 +2449,7 @@ function renderMissionEvidence(feed, hits, scores) {
       <span>${ROUTE_GUARD_SCENARIO.title}</span>
       <strong>${ROUTE_GUARD_SCENARIO.mission}</strong>
       <em>${ROUTE_GUARD_SCENARIO.summary}</em>
-      <small>${feed.callsign}: ${displayCommand(feed.command)} · Plan: ${activeRoutePlan.lane} ${activeRoutePlan.score} · Cue: ${strongestCue}</small>
+      <small>${feed.callsign}: ${displayCommand(feed.command)} · Auto Guard: ${routeState} · Cue: ${strongestCue}</small>
       <small>${ROUTE_GUARD_SCENARIO.cvLane}</small>
     </div>
     ${signals}
@@ -2809,7 +2622,6 @@ document.querySelector("#emergency-stop").addEventListener("click", () => issueC
 document.querySelector("#sync-now").addEventListener("click", () => triggerSync());
 document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
-document.querySelector("#replan-route").addEventListener("click", () => replanRoute());
 
 function setConnectivityMode(mode) {
   connectivityMode = mode;

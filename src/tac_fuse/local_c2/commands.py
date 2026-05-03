@@ -1,7 +1,7 @@
 """Local C2 command authority — the hardened-laptop command contract.
 
-This module defines the six canonical operator commands (RESUME, PATROL, RETURN,
-HOLD, ROUTE_SOLVE, ABORT) and the :class:`LocalC2Authority` that accepts them
+This module defines the five canonical operator commands (RESUME, PATROL, RETURN,
+HOLD, ABORT) and the :class:`LocalC2Authority` that accepts them
 in any connectivity mode.  Every accepted command produces a state-first proof
 row in the underlying :class:`MissionStateStore` (state + audit + sync queue).
 
@@ -22,7 +22,7 @@ from tac_fuse.mission_state import MissionStateStore
 
 
 class C2Command(StrEnum):
-    """The six canonical local-C2 operator commands.
+    """The five canonical local-C2 operator commands.
 
     Each command maps to an operator-facing verb shown in CAPITALIZED copy.
     """
@@ -31,7 +31,6 @@ class C2Command(StrEnum):
     PATROL = "patrol"
     RETURN = "return"
     HOLD = "hold"
-    ROUTE_SOLVE = "route_solve"
     ABORT = "abort"
 
     @property
@@ -78,9 +77,8 @@ class C2CommandReceipt:
 # ── Known command set ───────────────────────────────────────────────────────
 
 C2_COMMAND_OPS: frozenset[str] = frozenset(c.value for c in C2Command)
-"""The accepted command set.  ``route_solve`` is included as a first-class
-command for the route-guard scenario; other strings raise
-:class:`UnknownCommandError`."""
+"""The accepted command set.  Route geometry is automatic; ambiguous manual
+route-solving strings raise :class:`UnknownCommandError`."""
 
 
 # ── Exceptions ──────────────────────────────────────────────────────────────
@@ -134,7 +132,7 @@ class LocalC2Authority:
         :meth:`MissionStateStore.dispatch_command` for state-first persistence.
 
         Args:
-            command: One of the six canonical commands.
+            command: One of the five canonical commands.
             asset_id: Target asset (drone, swarm, ground-team).
             description: Optional operator description.
             metadata: Optional metadata dict merged into the task.

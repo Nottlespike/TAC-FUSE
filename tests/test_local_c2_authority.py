@@ -1,7 +1,7 @@
 """Local C2 authority layer: offline command acceptance, track management, sync gate.
 
 These tests prove that:
-1. All six canonical commands (Resume, Patrol, Return, Hold, Route Solve, Abort)
+1. All five canonical commands (Resume, Patrol, Return, Hold, Abort)
    are accepted locally in OFFLINE, DEGRADED, and ONLINE modes.
 2. Unknown commands are rejected with clear error messages.
 3. Every accepted command produces a state-first proof chain.
@@ -78,16 +78,16 @@ def _make_cue(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 1. Command acceptance — all six commands, all three connectivity modes
+# 1. Command acceptance — all five commands, all three connectivity modes
 # ═══════════════════════════════════════════════════════════════════════════
 
 
 class TestCommandAcceptance:
-    """Prove all six canonical commands are accepted in every connectivity mode."""
+    """Prove all five canonical commands are accepted in every connectivity mode."""
 
     @pytest.mark.parametrize(
         "command",
-        ["resume", "patrol", "return", "hold", "route_solve", "abort"],
+        ["resume", "patrol", "return", "hold", "abort"],
     )
     @pytest.mark.parametrize(
         "mode",
@@ -116,11 +116,10 @@ class TestCommandAcceptance:
         assert C2Command.PATROL.display == "PATROL"
         assert C2Command.RETURN.display == "RETURN"
         assert C2Command.HOLD.display == "HOLD"
-        assert C2Command.ROUTE_SOLVE.display == "ROUTE SOLVE"
         assert C2Command.ABORT.display == "ABORT"
 
-    def test_command_ops_set_contains_all_six(self) -> None:
-        expected = {"resume", "patrol", "return", "hold", "route_solve", "abort"}
+    def test_command_ops_set_contains_all_five(self) -> None:
+        expected = {"resume", "patrol", "return", "hold", "abort"}
         assert C2_COMMAND_OPS == expected
 
     def test_receipt_has_operator_attribution(self) -> None:
@@ -168,7 +167,7 @@ class TestCommandAcceptance:
 class TestUnknownCommandRejection:
     """Prove unknown commands are rejected with clear error messages."""
 
-    @pytest.mark.parametrize("bad_cmd", ["fly", "land", "scan", "", "attack"])
+    @pytest.mark.parametrize("bad_cmd", ["fly", "land", "scan", "", "attack", "route_solve"])
     def test_unknown_commands_raise(self, bad_cmd: str) -> None:
         _, _, authority = _make_authority()
         with pytest.raises(UnknownCommandError) as exc_info:

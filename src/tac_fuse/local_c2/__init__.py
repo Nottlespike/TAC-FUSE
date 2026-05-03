@@ -5,8 +5,8 @@ continue issuing operator commands while cut off from internet, higher command,
 and enterprise services.  External sync may stage/export operator intent, but it
 must not be required for local command acceptance or replay.
 
-COMMANDS ACCEPTED LOCALLY (all six work in OFFLINE / DEGRADED / ONLINE):
-    Resume, Patrol, Return, Hold, Route Solve, Abort
+COMMANDS ACCEPTED LOCALLY (all five work in OFFLINE / DEGRADED / ONLINE):
+    Resume, Patrol, Return, Hold, Abort
 
 TRACK MANAGEMENT:
     Alpha, Bravo, Charlie, and Delta emit local classification/prioritization
