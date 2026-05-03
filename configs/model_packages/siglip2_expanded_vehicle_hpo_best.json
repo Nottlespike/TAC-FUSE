@@ -1,0 +1,122 @@
+{
+  "package_id": "siglip2-expanded-vehicle-hpo-best",
+  "artifact_type": "pytorch_siglip2_image_classifier",
+  "package_dir": "models/siglip2-expanded-vehicle-hpo-best",
+  "base_model": "google/siglip2-base-patch16-224",
+  "packaged_at_utc": "2026-05-03T10:51:43Z",
+  "source": {
+    "h100_host": "89.169.120.2",
+    "trainer": "scripts/h100_classifier_train.py",
+    "source_checkpoint_dir": "/tmp/tac-fuse-h100-runs/ax-hpo-expanded-v2-20260503_103827/best_checkpoint/siglip2_expanded_vehicle_hpo_best_20260503_105143",
+    "source_hpo_dir": "/tmp/tac-fuse-h100-runs/ax-hpo-expanded-v2-20260503_103827"
+  },
+  "selection": {
+    "framework": "Ax + BoTorch",
+    "completed_trials": 18,
+    "trial_index": 14,
+    "objective": "eval_accuracy - 0.10 * eval_loss"
+  },
+  "dataset": {
+    "manifest": "expanded_vehicle_v2",
+    "train_samples": 1152,
+    "eval_samples": 288,
+    "label_mapping": {
+      "clear_corridor": 0,
+      "dense_multi_asset_formation": 1,
+      "drone_near_restricted_area": 2,
+      "low_altitude_clutter": 3,
+      "low_power_return_corridor": 4,
+      "reduced_visibility_field_conditions": 5
+    },
+    "sources": [
+      "Voxel51/VisDrone2019-DET",
+      "pathikg/drone-detection-dataset",
+      "amir-kazemi/aidovecl-vehicle-detection-classification-localization",
+      "McCheng/DroneVehicle",
+      "wandering-tiger/Vehicle-Detection-in-haze-Dataset"
+    ],
+    "notes": [
+      "The expanded vehicle dataset is pseudo-labeled for field-condition classifier bootstrapping.",
+      "DroneVehicle and vehicle-haze license metadata was unavailable during packaging; keep provenance attached before publication."
+    ]
+  },
+  "hpo_parameters": {
+    "batch_size": 4,
+    "freeze_backbone": false,
+    "gradient_accumulation": 8,
+    "learning_rate": 1.728442593317657e-05,
+    "max_steps": 115,
+    "warmup_ratio": 0.25,
+    "weight_decay": 0.0
+  },
+  "metrics": {
+    "eval_accuracy": 0.6979166666666666,
+    "eval_loss": 0.676681625812004,
+    "eval_samples": 288,
+    "score": 0.6302485040854662
+  },
+  "per_class_accuracy": {
+    "clear_corridor": 0.7083333333333334,
+    "dense_multi_asset_formation": 0.7291666666666666,
+    "drone_near_restricted_area": 1.0,
+    "low_altitude_clutter": 0.4583333333333333,
+    "low_power_return_corridor": 0.7291666666666666,
+    "reduced_visibility_field_conditions": 0.5625
+  },
+  "prediction_distribution": {
+    "clear_corridor": 44,
+    "dense_multi_asset_formation": 73,
+    "drone_near_restricted_area": 48,
+    "low_altitude_clutter": 37,
+    "low_power_return_corridor": 50,
+    "reduced_visibility_field_conditions": 36
+  },
+  "runtime": {
+    "device": "cuda",
+    "gpu": "NVIDIA H100 80GB HBM3",
+    "torch": "2.6.0+cu124",
+    "torchvision": "0.21.0+cu124"
+  },
+  "files": [
+    {
+      "path": "backbone/config.json",
+      "bytes": 995,
+      "sha256": "bc873a7ab2677f63bb7f93856ed9577dc0103b0ac97efddebbc2c2423837b56f"
+    },
+    {
+      "path": "backbone/model.safetensors",
+      "bytes": 1500800904,
+      "sha256": "d1f1e3f14c203cd8783595208445b63afea46098aa511220b40ec7f027eb162d"
+    },
+    {
+      "path": "classifier_head.pt",
+      "bytes": 20616,
+      "sha256": "e7eb1cd6987e5b3e29adb0c33f1111ab6432401ecd3e5c6a0275ff6de498e414"
+    },
+    {
+      "path": "processor/chat_template.jinja",
+      "bytes": 591,
+      "sha256": "ecd6ae513fe103f0eb62e8ab5bfa8d0fe45c1074fa398b089c93a7e70c15cfd6"
+    },
+    {
+      "path": "processor/processor_config.json",
+      "bytes": 463,
+      "sha256": "e4f8960049b5e0276caaf3d307ee03f1584f0ea5bfab702d60c03a4cc90d12b5"
+    },
+    {
+      "path": "processor/tokenizer.json",
+      "bytes": 34363038,
+      "sha256": "caefd63119539a63be2d55ef3e05023fbb793948c4bda5bc0c366b42a382f903"
+    },
+    {
+      "path": "processor/tokenizer_config.json",
+      "bytes": 655,
+      "sha256": "f2c862b59d884624691cc4509acf15bd8d1503dee1b42314ddb521eab9609fd1"
+    },
+    {
+      "path": "training_summary.json",
+      "bytes": 1028,
+      "sha256": "18ae179c72f5f4c847a8584ca1f80428e5ed7970e3d65517386268af2bd4b0b4"
+    }
+  ]
+}

@@ -41,6 +41,12 @@ automatic download under the catalog policy. Large cached rasters stay under
 
 Object detection and scene classification are supporting proof points, not the main product. The hardened laptop remains the C2 authority when inference is unavailable. Use the optional SigLIP2/OpenVINO path to show that once objects or unknowns are visible in local drone feeds, each field platform can classify and prioritize them without cloud infrastructure.
 
+The current H100-selected PyTorch classifier package is staged locally under
+`models/siglip2-expanded-vehicle-hpo-best/`; the tracked manifest lives at
+`configs/model_packages/siglip2_expanded_vehicle_hpo_best.json`. See
+`docs/siglip2_expanded_vehicle_classifier.md` for metrics, checksums, and the
+OpenVINO export boundary.
+
 Expected local model layout:
 
 ```text

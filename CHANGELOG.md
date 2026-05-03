@@ -93,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scene labels separate from object detections unless explicitly opted in.
 - Pseudo-classification alert routing for tagathon workflows as low-priority
   scene context rather than a bounding-box detection claim.
+- H100-selected SigLIP2 expanded-vehicle classifier package manifest, local
+  package documentation, checksum workflow, and reproducible H100 training
+  entrypoint.
 
 ### Changed
 - The browser field view now applies RT geometry decisions to drone standoff,
@@ -186,6 +189,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tightened the self-improvement inference-centrality audit to match bounded
   centrality terms, preventing false positives from words like score/remains
   while keeping Strix NPU proof copy explicitly optional.
+- Made stale-track authority tests use fresh UTC timestamps instead of a fixed
+  date so the validation suite remains stable after May 3, 2026.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.

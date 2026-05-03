@@ -13,6 +13,8 @@ These tests prove that:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from tac_fuse.connectivity import ConnectivityController, ConnectivityMode
@@ -53,6 +55,10 @@ def _make_authority(
     return store, ctrl, authority
 
 
+def _fresh_timestamp() -> str:
+    return (datetime.now(UTC) + timedelta(seconds=30)).isoformat()
+
+
 def _make_cue(
     asset_id: str = "uav-alpha",
     classification: str = "vehicle",
@@ -67,7 +73,7 @@ def _make_cue(
         source=SourceAttribution(
             source_id=f"{asset_id}_eo_rgb",
             sensor_type="eo_rgb",
-            timestamp="2026-05-03T12:00:00+00:00",
+            timestamp=_fresh_timestamp(),
             confidence=0.92,
         ),
         lat=38.89,
@@ -372,7 +378,7 @@ class TestStaleTrackHandling:
 
     def test_fresh_track_not_stale(self) -> None:
         policy = TrackStalenessPolicy(max_age_seconds=60.0)
-        assert not policy.is_stale("2026-05-03T12:00:00+00:00")
+        assert not policy.is_stale(_fresh_timestamp())
 
     def test_old_track_is_stale(self) -> None:
         policy = TrackStalenessPolicy(max_age_seconds=5.0)
