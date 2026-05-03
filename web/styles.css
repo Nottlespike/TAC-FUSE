@@ -766,9 +766,10 @@ canvas {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
-    max-width: min(42vw, 520px);
+    max-width: min(54vw, 720px);
+    flex-wrap: wrap;
 }
 
 .feed-tab {
@@ -778,11 +779,11 @@ canvas {
     color: var(--muted);
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
-    padding: 6px 9px;
-    font-size: 12px;
-    font-weight: 750;
+    padding: 8px 13px;
+    font-size: 14px;
+    font-weight: 800;
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
@@ -790,7 +791,7 @@ canvas {
 
 .feed-tab span {
     color: var(--muted);
-    font-size: 10px;
+    font-size: 12px;
     font-variant-numeric: tabular-nums;
 }
 

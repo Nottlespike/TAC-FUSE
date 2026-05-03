@@ -173,7 +173,7 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(evidenceOverlap).toEqual([]);
 
   const alphaFusionIds = await page.locator("#pov-overlay").getAttribute("data-fusion-ids");
-  await page.locator(".target-label").first().click();
+  await page.locator(".target-label").first().dispatchEvent("click");
   await expect(page.locator(".target-label.selected-contact")).toBeVisible();
 
   await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());

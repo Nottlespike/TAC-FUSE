@@ -108,6 +108,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   avoidance, return, and hold behavior instead of treating geometry as a passive
   status label. The metric strip surfaces concise RT-control state while the
   detailed hardware panel keeps backend and latency context.
+- The 3D Field C2 view now behaves as one fused operating picture with stable
+  shared track memory across Alpha/Bravo/Charlie/Delta selectors, clickable
+  contact labels, and drag/zoom camera controls on the canvas.
+- Removed the carousel-style feed arrows from the Field C2 header; platform
+  pills are now the direct selector.
 - The alpha test plan and self-improvement generator now require CUDA/RTX route
   work to drive canonical local C2 commands for the swarm, not only report a
   hardware badge.
