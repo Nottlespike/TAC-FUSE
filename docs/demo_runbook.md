@@ -63,7 +63,7 @@ The primary capability is not object detection. The primary capability is resili
 | Lint clean | `ruff check src tests` | `uv run ruff check src tests` |
 
 For Strix remote checks, always use the same non-interactive SSH bootstrap
-(the current SSH alias is `gpu`):
+(the current SSH alias is `strix`):
 
 ```bash
 ssh strix 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
