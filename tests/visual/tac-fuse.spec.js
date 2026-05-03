@@ -39,6 +39,8 @@ test("offline swarm control: commands queue, sync gate holds, degraded works", a
   // Issue commands while offline via Local C2 buttons
   await page.locator("#patrol-area").click();
   await page.waitForTimeout(200);
+  await page.locator("#replan-route").click();
+  await page.waitForTimeout(200);
   await page.locator("#hold-position").click();
   await page.waitForTimeout(200);
   await page.locator("#return-home").click();
@@ -99,7 +101,10 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
   await expect(page.locator(".metric-strip")).toContainText("Power");
   await expect(page.locator(".metric-strip")).toContainText("Sync");
+  await expect(page.locator(".metric-strip")).toContainText("Plan");
   await expect(page.locator(".metric-strip")).not.toContainText(/object pass|objects quantified|restricted object|CPU route check/i);
+  await expect(page.locator("#replan-route")).toContainText("Replan Route");
+  await expect(page.locator("body")).not.toContainText("Route Solve");
   await expect(page.locator("#asset-list .feed-latency").first()).toHaveText(/^\d{1,3} ms$/);
   await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
   const labelCount = await page.locator(".target-label").count();
@@ -126,6 +131,9 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(povBox.height).toBeGreaterThan(410);
 
   const first = await canvasHash(page, "#pov-canvas");
+  await page.locator("#replan-route").click();
+  await expect(page.locator("#bvh-label")).toContainText(/Replanned|Caution Plan|Hold Pending ID/);
+  await expect(page.locator("#staged-packet")).toContainText("Replan");
   await page.waitForTimeout(900);
   const second = await canvasHash(page, "#pov-canvas");
 
