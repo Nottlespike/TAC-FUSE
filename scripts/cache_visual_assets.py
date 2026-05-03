@@ -12,8 +12,8 @@ _SRC_DIR = _PROJECT_ROOT / "src"
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
-from tac_fuse.assets.catalog import AssetCatalogError, load_catalog_from_yaml
-from tac_fuse.assets.download import (
+from tac_fuse.assets.catalog import load_catalog  # noqa: E402
+from tac_fuse.assets.download import (  # noqa: E402
     DEFAULT_MAX_DOWNLOAD_BYTES,
     DEFAULT_TIMEOUT_SEC,
     download_auto_assets,
@@ -39,8 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
-        catalog = load_catalog_from_yaml(args.config)
-    except AssetCatalogError as exc:
+        catalog = load_catalog(args.config)
+    except (FileNotFoundError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
@@ -63,11 +63,9 @@ def main(argv: list[str] | None = None) -> int:
 
     output_path = args.manifest_output
     if output_path is None:
-        output_path = args.project_root / catalog.manifest_config.get(
-            "output_path", "configs/assets/visual_asset_manifest.json"
-        )
-    catalog.generate_manifest(args.project_root).write_json(output_path)
-    print(f"\nWrote manifest to {output_path}")
+        output_path = args.project_root / "configs/assets/visual_asset_manifest.json"
+    manifest = catalog.generate_manifest(root=args.project_root, output_path=output_path)
+    print(f"\nWrote manifest with {len(manifest['assets'])} assets to {output_path}")
     return 0
 
 

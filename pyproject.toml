@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tac-fuse"
 version = "0.1.0"
-description = "Local-first tactical command and control drone POV demo"
+description = "Local-first edge C2 demo for disconnected drone operations"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

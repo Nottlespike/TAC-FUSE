@@ -1,0 +1,151 @@
+# TAC-FUSE — SigLIP2 Field-Condition Fine-Tuning Configuration
+#
+# Targets: google/siglip2-base-patch16-224
+# Purpose: Contrastive + object-label classification on field-condition
+#           sensor-fusion data (RGB / IR / depth / telemetry)
+#
+# Copy to siglip2_field_conditions.local.yaml for real paths.
+# Env-var overrides available for every top-level key.
+
+# ── Model ────────────────────────────────────────────────────────────────────
+model:
+  name: "google/siglip2-base-patch16-224"
+  trust_remote_code: false
+  torch_dtype: "fp16"          # FP16 training; use bf16 on Ampere+ if preferred
+  freeze_vision_encoder: false  # full fine-tune; set true for LoRA/adapter-only
+
+# ── Modalities ───────────────────────────────────────────────────────────────
+# RGB is always the primary channel.  IR, depth, and telemetry are fused
+# via late-stage concatenation into adapter heads.
+modalities:
+  rgb:
+    enabled: true
+    image_size: 224
+    channels: 3
+    mean: [0.5, 0.5, 0.5]
+    std: [0.5, 0.5, 0.5]
+  ir:
+    enabled: true
+    image_size: 224
+    channels: 1
+    mean: [0.0]
+    std: [1.0]
+  depth:
+    enabled: true
+    image_size: 224
+    channels: 1
+    mean: [0.0]
+    std: [1.0]
+  telemetry:
+    enabled: true
+    feature_dim: 16            # altitude_m, heading_deg, battery_pct, speed_ms, …
+    norm_type: "minmax"
+
+# ── Heads / Adapters ─────────────────────────────────────────────────────────
+heads:
+  contrastive:
+    enabled: true
+    temperature: 0.07          # SigLIP-style learned temperature init
+    loss_weight: 1.0
+  object_label:
+    enabled: true
+    num_classes: 6             # matches FIELD_CONDITION_LABELS in npu_siglip.py
+    loss_weight: 1.0
+    label_smoothing: 0.05
+  adapter:
+    type: "linear"             # "linear" | "mlp" | "lora"
+    hidden_dim: 256
+    dropout: 0.1
+    fuse_mode: "concat"        # how modality embeddings are combined
+
+# ── Dataset ──────────────────────────────────────────────────────────────────
+dataset:
+  # JSON manifests enumerating sample records with paths to each modality.
+  manifest_train: "fixtures/datasets/siglip2_train_manifest.json"
+  manifest_eval: "fixtures/datasets/siglip2_eval_manifest.json"
+  # CSV / parquet alternative (used when manifest_train ends with .csv/.parquet).
+  # manifest_csv: null
+  # csv_columns:
+  #   rgb_path: "rgb_filename"
+  #   ir_path: "ir_filename"
+  #   depth_path: "depth_filename"
+  #   telemetry_path: "telemetry_filename"
+  #   label: "field_condition"
+  image_root: "data/siglip2-field-conditions/"
+  label_mapping:
+    clear_corridor: 0
+    dense_multi_asset_formation: 1
+    drone_near_restricted_area: 2
+    low_altitude_clutter: 3
+    low_power_return_corridor: 4
+    reduced_visibility_field_conditions: 5
+
+# ── Training ─────────────────────────────────────────────────────────────────
+# RTX 5070 laptop — 12 GB VRAM class.  Small batch, gradient accumulation.
+training:
+  epochs: 30
+  batch_size: 4              # per-device batch
+  gradient_accumulation: 8   # effective batch = 32
+  max_grad_norm: 1.0
+  warmup_ratio: 0.1
+  lr: 2.0e-5
+  lr_scheduler: "cosine"
+  weight_decay: 0.01
+  fp16: true
+  bf16: false
+  num_workers: 2
+  pin_memory: true
+  dataloader_drop_last: true
+  eval_strategy: "epoch"
+  save_strategy: "epoch"
+  save_total_limit: 3
+  logging_steps: 10
+
+# ── Reproducibility ──────────────────────────────────────────────────────────
+seed: 42
+deterministic: true          # torch.use_deterministic_algorithms
+  allow_tf32: false          # disable for exact reproducibility on Ampere+
+
+# ── Checkpoints / Outputs ────────────────────────────────────────────────────
+output:
+  # Top-level training output root.  Per-run subfolder includes timestamp.
+  output_dir: "outputs/siglip2-field-conditions"
+  run_name: null             # auto-generated if null (siglip2_YYYYMMDD_HHMMSS)
+  save_safetensors: true
+  save_model: true           # also save full HF-format checkpoint
+  log_to: "tensorboard"      # "tensorboard" | "wandb" | "none"
+  wandb_project: null
+
+# ── Export (OpenVINO Intel NPU) ───────────────────────────────────────────────
+export:
+  openvino:
+    enabled: true
+    output_dir: "models/siglip2-field-npu"
+    precision: "FP16"
+    compress_weights: false   # INT8 compression after PTQ calibration
+    task: "zero-shot-image-classification"
+    input_shapes:
+      pixel_values: [1, 3, 224, 224]   # RGB primary input
+    # IR / depth / telemetry are handled via separate subgraphs post-training;
+    # set `multi_input: true` for a fused ONNX export that accepts all modalities.
+    multi_input: false
+
+# ── Offline / Cache ──────────────────────────────────────────────────────────
+# All downloads should happen pre-flight.  No network access during training.
+offline:
+  enabled: true
+  hf_cache_dir: "cache/huggingface"    # pre-populated model/tokenizer cache
+  disable_telemetry: true              # opt out of HuggingFace usage reports
+  local_files_only: true               # never reach out to the hub at runtime
+  trust_env_proxies: false             # do not honour HTTP_proxy variables
+
+# ── Evaluation ───────────────────────────────────────────────────────────────
+eval:
+  metrics:
+    - accuracy
+    - f1_macro
+    - top_k_accuracy               # k from top_k below
+    - contrastive_recall_at_1
+  top_k: 3
+  confusion_matrix: true
+  per_class_report: true

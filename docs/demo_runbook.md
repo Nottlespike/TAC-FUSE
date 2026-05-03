@@ -8,14 +8,16 @@
 
 ## 1. System Overview
 
-TAC-FUSE is a local-first tactical fused-state operator interface. It runs entirely from a local SQLite database (`mission.db`) and does not depend on external connectivity to maintain mission state. External integrations — Intel NPU (SigLIP2 scene classification), NVIDIA RTX (GPU spatial acceleration), and Foundry export/upload — are all behind lazy-adapter boundaries.
+TAC-FUSE is a local-first edge C2 node for Problem Statement 2: Edge Deployments and Drone Operation. The demo proves that a front-line operator can keep command authority over drones from a hardened laptop or backpack-class kit when central connectivity is intermittent, degraded, or fully denied.
+
+The primary capability is not object detection. The primary capability is resilient local C2: operator tasking, drone state, audit log, route/geofence alerts, and deferred sync all persist in local SQLite (`mission.db`) before any external service is contacted. Sensor inference and accelerator paths demonstrate useful local processing once the C2 loop is already working.
 
 ### 1.1 Architecture Summary
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              Operator Dashboard (web/)              │
-│  Semantic search · Asset map · Alerts · Mission log │
+│        Hardened laptop C2 dashboard (web/)          │
+│  Tasking · Asset map · Alerts · Mission log         │
 └──────────────┬──────────────────────┬───────────────┘
                │                      │
     ┌───────────▼──────┐    ┌──────────▼──────────┐
@@ -24,16 +26,16 @@ TAC-FUSE is a local-first tactical fused-state operator interface. It runs entir
     └──────────┬───────┘    └──────────┬──────────┘
                │                       │
     ┌──────────▼───────┐  ┌────────────▼──────────┐
-    │SeededReplayEngine│  │  Spatial adapters      │
-    │ (seeded scenario)│  │  NPU / RTX / CPU      │
+    │SeededReplayEngine│  │ Sensor + geometry cues │
+    │ (drone scenario) │  │  CPU / RTX / optional  │
     └──────────────────┘  └───────────────────────┘
                │
     ┌──────────▼───────────┐
-    │  Foundry Export/Upload│  ← external boundary
+    │ Enterprise Export/Sync│  ← external boundary
     └──────────────────────┘
 ```
 
-**Key principle:** Core state always persists to SQLite first. Any external sync (Foundry, telemetry, model download) happens *after* the local write succeeds.
+**Key principle:** The laptop is the mission authority during denial. Core state always persists to SQLite first. Any external sync, telemetry upload, model download, or enterprise export happens *after* the local write succeeds.
 
 ---
 
@@ -44,8 +46,9 @@ TAC-FUSE is a local-first tactical fused-state operator interface. It runs entir
 | Check | Requirement | Verification command |
 |-------|-------------|----------------------|
 | CPU | Any x86-64; fallback always works | `uv run python -c "import sys; print(sys.executable)"` |
-| Intel NPU | Intel Core Ultra (AIGPU) or Arc; OpenVINO 2024.x | `uv run python -c "from openvino.runtime import Core; c=Core(); print([d.get_property('FULL_DEVICE_NAME') for d in c.available_devices])"` |
-| NVIDIA RTX | CUDA 12.x, driver ≥ 535; `nvidia-smi` exits 0 | `nvidia-smi --query-gpu=name,driver_version --format=csv` |
+| Edge kit | Hardened laptop or backpack-class compute kit with local power | Show the laptop running the dashboard with network disabled |
+| Optional MPU/NPU | On-device inference path only; not required for C2 | `uv run python scripts/check_npu_runtime.py` |
+| Optional NVIDIA RTX | CUDA 12.x, driver ≥ 535; acceleration only | `nvidia-smi --query-gpu=name,driver_version --format=csv` |
 | RAM | ≥ 16 GB recommended for full demo | `system_profiler SPHardwareDataType` / `free -h` |
 | Disk | ≥ 2 GB free for SQLite DB, demo fixtures | `df -h .` |
 
@@ -178,9 +181,21 @@ print(f"[OK] {store.count_tracks()} tracks in database")
 
 **Proof point 2:** Same seed → identical scenario every demo run (deterministic).
 
-### 3.4 Phase 3 — Semantic Query Demonstration (5–8 min)
+### 3.4 Phase 3 — Single-Operator Swarm C2 Demonstration (5–8 min)
 
-The dashboard's semantic search panel accepts natural-language queries against the in-memory spatial index. Sample queries:
+The operator uses the hardened laptop to command the swarm while disconnected. The dashboard should make it obvious that commands apply locally and are staged for later enterprise sync.
+
+**Live demo step:**
+1. Open `web/index.html` in a browser.
+2. Select each drone and issue `Patrol`, `Hold`, `Return`, and `Abort`.
+3. Show the command queue, mission log, asset movement, and alert panel updating without any central network.
+4. Show that the selected drone POV and map remain available from local replay/cache data.
+
+**Proof point 3:** A single operator can task and coordinate multiple autonomous vehicles from the edge device while disconnected.
+
+### 3.5 Phase 4 — Local Sensor Cue Demonstration (8–10 min)
+
+The dashboard can also show local sensor and geometry cues. These are supporting proof points after the C2 loop is established. Sample local queries or cue checks:
 
 | # | Query string | Expected behavior |
 |---|-------------|-------------------|
@@ -191,14 +206,11 @@ The dashboard's semantic search panel accepts natural-language queries against t
 | 5 | `"high-speed assets"` | Returns assets with speed > 20 m/s (seeded speeds: 10–35 m/s range) |
 | 6 | `"assets at altitude above 140m"` | Returns tracks at the altitude peak seeded in step ~15 |
 
-**Live demo step:**
-1. Open `web/index.html` in a browser.
-2. In the Semantic Search panel, type each query and demonstrate the filtered asset list / map highlight.
-3. Show that results are derived from the locally seeded SQLite data — no external vector DB required.
+If object detection is available, demonstrate it as: "the edge kit can identify and prioritize visible objects once they appear in the feed." Do not present model accuracy as the core deliverable.
 
-**Proof point 3:** Semantic search runs entirely from local SQLite + in-memory spatial indexing.
+**Proof point 4:** Sensor processing and geometry checks produce useful local alerts without cloud infrastructure.
 
-### 3.5 Phase 4 — Offline Toggle Demonstration (8–10 min)
+### 3.6 Phase 5 — Offline Toggle Demonstration (10–12 min)
 
 This phase demonstrates the connectivity mode ladder. The operator can toggle modes without stopping the mission.
 
@@ -247,7 +259,7 @@ EOF
 
 Usage: `bash toggle_offline.sh OFFLINE`
 
-**Proof point 4:** Mission state persists to SQLite regardless of connectivity mode. Toggling OFFLINE does not corrupt or lose any tracked state.
+**Proof point 5:** Mission state persists to SQLite regardless of connectivity mode. Toggling OFFLINE does not corrupt or lose any tracked state.
 
 ---
 
@@ -305,12 +317,22 @@ foundry_exports/
 
 ## 5. Fallback Ladder
 
-### 5.1 NPU Fallback Ladder (Scene Classification)
+### 5.1 C2 Fallback Ladder
 
-| NPU status | Action |
-|------------|--------|
-| Intel NPU + OpenVINO detected | Run SigLIP2 via OpenVINO Runtime on NPU device |
-| NPU not detected | Fall back to CPU (OpenVINO on CPU device) |
+| Failure mode | Required behavior |
+|--------------|-------------------|
+| Central network denied | Keep tasking, map/replay, alerts, audit log, and queue local |
+| Foundry/Maven credentials absent | Export/stage locally; never block C2 |
+| Drone feed stale | Mark stale, retain last known state, keep operator controls active |
+| Map imagery missing | Use procedural/local fallback and preserve asset state |
+| Accelerator unavailable | Continue with CPU/local deterministic paths |
+
+### 5.2 Optional Inference Fallback Ladder
+
+| Inference status | Action |
+|------------------|--------|
+| MPU/NPU/OpenVINO path available | Classify or prioritize visible objects locally |
+| Accelerator not detected | Use CPU or deterministic cue scoring |
 | OpenVINO import fails | Skip scene classification; log warning; mission continues |
 | Model IR files missing | Use placeholder class label `"unknown"`; log warning |
 
@@ -330,7 +352,7 @@ def classify_scene(image_path: str) -> str:
         return "unknown"          # Runtime error
 ```
 
-### 5.2 RTX Fallback Ladder (Spatial Acceleration)
+### 5.3 Geometry Fallback Ladder
 
 | GPU status | Action |
 |------------|--------|
@@ -356,9 +378,9 @@ def filter_tracks_in_radius(tracks, center_lat, center_lon, radius_m):
     return [t for t in tracks if haversine_distance_m(t.lat, t.lon, center_lat, center_lon) <= radius_m]
 ```
 
-**Proof point 5:** All spatial operations work with CPU fallback. RTX is an optimization, not a requirement.
+**Proof point 6:** All spatial operations work with CPU fallback. RTX is an optimization, not a requirement.
 
-### 5.3 Dashboard / Web UI Fallback
+### 5.4 Dashboard / Web UI Fallback
 
 | Condition | Behavior |
 |-----------|----------|
@@ -367,7 +389,7 @@ def filter_tracks_in_radius(tracks, center_lat, center_lon, radius_m):
 | `web/` not served | All mission state is accessible via Python API directly from `mission.db` |
 | `styles.css` missing | Functional layout with browser defaults; no crash |
 
-### 5.4 Telemetry Fallback
+### 5.5 Telemetry Fallback
 
 | Condition | Behavior |
 |-----------|----------|
@@ -400,14 +422,14 @@ Each proof point is a discrete claim that can be verified live during the demo.
 | PP | Proof Point | Verification method |
 |----|-------------|--------------------|
 | **PP-1** | Local SQLite state is the single source of truth; no external service is required to reach a functional operational state | Show `ls mission.db`, run `sqlite3 mission.db "SELECT COUNT(*) FROM tracks"`, confirm dashboard populates with no network |
-| **PP-2** | Same demo scenario is reproducible across runs (determinism via seed) | Run `SeededReplayEngine(seed=42, ...)` twice, dump track IDs, confirm identical |
-| **PP-3** | Semantic search returns correct results from local data | Run each of the 6 sample queries via the web panel or Python API; manually verify against raw track data |
-| **PP-4** | OFFLINE toggle preserves all mission state without corruption | Toggle OFFLINE, insert 10 tracks, toggle ONLINE, query count — confirm all 10 present |
-| **PP-5** | Foundry export generates a valid artifact on disk without calling any Foundry API | Run `exporter.export_mission_bundle()`, `tar tzf` the output; verify contents |
-| **PP-6** | Foundry upload is blocked in OFFLINE mode; bundle retained for later upload | Toggle OFFLINE, call `uploader.upload()`, confirm no HTTP request made; check `foundry_exports/` |
-| **PP-7** | NPU classification degrades gracefully to `unknown` with no crash | Remove OpenVINO or model IR, call `classify_scene()`, confirm returns `"unknown"` |
-| **PP-8** | Spatial operations work on CPU without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run spatial filter, confirm correct distances |
-| **PP-9** | All offline tests pass (`uv run pytest`) | Run pytest, show 0 failures, 0 errors |
+| **PP-2** | A single operator can retask multiple drones from the edge device | Issue `Patrol`, `Hold`, `Return`, and `Abort`; confirm asset behavior, command queue, and mission log update locally |
+| **PP-3** | OFFLINE toggle preserves all mission state without corruption | Toggle OFFLINE, insert 10 tracks, toggle ONLINE, query count — confirm all 10 present |
+| **PP-4** | Same demo scenario is reproducible across runs (determinism via seed) | Run `SeededReplayEngine(seed=42, ...)` twice, dump track IDs, confirm identical |
+| **PP-5** | Foundry/Maven export generates a valid artifact on disk without calling any external API | Run export, inspect the local files, verify bundle/packet retention |
+| **PP-6** | Upload/sync is blocked in OFFLINE mode; bundle retained for later upload | Toggle OFFLINE, call upload/sync guard, confirm no HTTP request made; check export directory |
+| **PP-7** | Sensor and geometry processing produce local prioritized alerts | Show restricted-volume, stale-feed, route-conflict, or battery alerts from local state |
+| **PP-8** | Optional object classification degrades gracefully to `unknown` with no crash | Remove OpenVINO or model IR, call `classify_scene()`, confirm core C2 remains available |
+| **PP-9** | Spatial operations work on CPU without RTX | Set `CUDA_VISIBLE_DEVICES=""`, run spatial filter, confirm correct distances |
 | **PP-10** | Telemetry queue survives OFFLINE→ONLINE transitions | Queue 50 events in OFFLINE mode, toggle ONLINE, confirm queue flushes |
 
 ---

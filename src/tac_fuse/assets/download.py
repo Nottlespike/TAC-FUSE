@@ -8,11 +8,11 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
-from tac_fuse.assets.catalog import AssetCatalog, AssetEntry, AssetRestriction
+from tac_fuse.assets.catalog import AssetCatalog, AutoDownloadPolicy, VisualAsset
 
 DEFAULT_MAX_DOWNLOAD_BYTES = 120 * 1024 * 1024
 DEFAULT_TIMEOUT_SEC = 45.0
@@ -78,34 +78,32 @@ def download_auto_assets(
     max_bytes: int = DEFAULT_MAX_DOWNLOAD_BYTES,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
 ) -> DownloadReport:
-    """Download approved ``auto_download`` visual assets into the local cache."""
+    """Download approved auto-download visual assets into the local cache."""
     selected = set(source_ids or [])
     found_selected: set[str] = set()
     records: list[DownloadRecord] = []
 
-    for entry in catalog.entries:
-        if selected and entry.id not in selected:
+    for asset in catalog.assets.values():
+        if selected and asset.id not in selected:
             continue
         if selected:
-            found_selected.add(entry.id)
+            found_selected.add(asset.id)
 
-        if not entry.auto_download:
+        if asset.download_policy != AutoDownloadPolicy.AUTO:
             if selected:
-                records.append(_skip(entry, project_root, "auto_download is false"))
+                records.append(
+                    _skip(asset, project_root, f"policy is {asset.download_policy.value}")
+                )
             continue
 
-        if entry.restriction != AssetRestriction.NONE.value:
-            records.append(_skip(entry, project_root, f"restriction is {entry.restriction}"))
-            continue
-
-        if not entry.source_url:
-            records.append(_skip(entry, project_root, "source_url is empty"))
+        if not asset.source_url:
+            records.append(_skip(asset, project_root, "source_url is empty"))
             continue
 
         try:
             records.append(
-                _download_entry(
-                    entry,
+                _download_asset(
+                    asset,
                     project_root,
                     force=force,
                     dry_run=dry_run,
@@ -117,10 +115,10 @@ def download_auto_assets(
         except AssetDownloadError as exc:
             records.append(
                 DownloadRecord(
-                    source_id=entry.id,
+                    source_id=asset.id,
                     status="error",
-                    local_path=str(_target_path(entry, project_root)),
-                    source_url=entry.source_url,
+                    local_path=str(project_root / asset.local_cache_path),
+                    source_url=asset.source_url or "",
                     reason=str(exc),
                 )
             )
@@ -138,18 +136,18 @@ def download_auto_assets(
     return DownloadReport(records=tuple(records))
 
 
-def _skip(entry: AssetEntry, project_root: Path, reason: str) -> DownloadRecord:
+def _skip(asset: VisualAsset, project_root: Path, reason: str) -> DownloadRecord:
     return DownloadRecord(
-        source_id=entry.id,
+        source_id=asset.id,
         status="skipped",
-        local_path=str(_target_path(entry, project_root)),
-        source_url=entry.source_url,
+        local_path=str(project_root / asset.local_cache_path),
+        source_url=asset.source_url or "",
         reason=reason,
     )
 
 
-def _download_entry(
-    entry: AssetEntry,
+def _download_asset(
+    asset: VisualAsset,
     project_root: Path,
     *,
     force: bool,
@@ -158,48 +156,43 @@ def _download_entry(
     max_bytes: int,
     timeout_sec: float,
 ) -> DownloadRecord:
-    target = _target_path(entry, project_root)
-    source_max = entry.max_download_bytes or max_bytes
-    _validate_url(entry.source_url, allow_file_urls=allow_file_urls)
+    source_url = asset.source_url or ""
+    target = project_root / asset.local_cache_path
+    _validate_url(source_url, allow_file_urls=allow_file_urls)
 
     if target.exists() and not force:
-        sha256 = _file_sha256(target)
-        if entry.expected_sha256 and sha256.lower() != entry.expected_sha256.lower():
-            raise AssetDownloadError(
-                f"existing file sha256 mismatch: expected {entry.expected_sha256}, got {sha256}"
-            )
         return DownloadRecord(
-            source_id=entry.id,
+            source_id=asset.id,
             status="exists",
             local_path=str(target),
-            source_url=entry.source_url,
+            source_url=source_url,
             bytes_written=target.stat().st_size,
-            sha256=sha256,
+            sha256=_file_sha256(target),
         )
 
     if dry_run:
         return DownloadRecord(
-            source_id=entry.id,
+            source_id=asset.id,
             status="dry_run",
             local_path=str(target),
-            source_url=entry.source_url,
-            reason=f"would download up to {source_max} bytes",
+            source_url=source_url,
+            reason=f"would download up to {max_bytes} bytes",
         )
 
     target.parent.mkdir(parents=True, exist_ok=True)
     request = urllib.request.Request(
-        entry.source_url,
+        source_url,
         headers={"User-Agent": "TAC-FUSE asset-cache/0.1"},
     )
 
     try:
         with urllib.request.urlopen(request, timeout=timeout_sec) as response:
             declared_length = response.headers.get("Content-Length")
-            if declared_length and int(declared_length) > source_max:
+            if declared_length and int(declared_length) > max_bytes:
                 raise AssetDownloadError(
-                    f"content length {declared_length} exceeds limit {source_max}"
+                    f"content length {declared_length} exceeds limit {max_bytes}"
                 )
-            return _write_response(entry, response, target, source_max)
+            return _write_response(asset, response, target, source_url, max_bytes)
     except urllib.error.URLError as exc:
         raise AssetDownloadError(f"download failed: {exc}") from exc
     except OSError as exc:
@@ -207,9 +200,10 @@ def _download_entry(
 
 
 def _write_response(
-    entry: AssetEntry,
+    asset: VisualAsset,
     response: object,
     target: Path,
+    source_url: str,
     max_bytes: int,
 ) -> DownloadRecord:
     hasher = hashlib.sha256()
@@ -230,17 +224,12 @@ def _write_response(
                 out.write(chunk)
 
         digest = hasher.hexdigest()
-        if entry.expected_sha256 and digest.lower() != entry.expected_sha256.lower():
-            raise AssetDownloadError(
-                f"sha256 mismatch: expected {entry.expected_sha256}, got {digest}"
-            )
-
         tmp_path.replace(target)
         return DownloadRecord(
-            source_id=entry.id,
+            source_id=asset.id,
             status="downloaded",
             local_path=str(target),
-            source_url=entry.source_url,
+            source_url=source_url,
             bytes_written=bytes_written,
             sha256=digest,
         )
@@ -261,15 +250,6 @@ def _validate_url(source_url: str, *, allow_file_urls: bool) -> None:
         )
     if parsed.scheme == "https" and not parsed.netloc:
         raise AssetDownloadError("source_url must include a hostname")
-
-
-def _target_path(entry: AssetEntry, project_root: Path) -> Path:
-    local = project_root / entry.local_cache_path
-    if str(entry.local_cache_path).endswith("/") or local.suffix == "":
-        parsed = urllib.parse.urlparse(entry.source_url)
-        filename = Path(parsed.path).name or f"{entry.id}.bin"
-        return local / filename
-    return local
 
 
 def _file_sha256(path: Path, block_size: int = 1 << 16) -> str:

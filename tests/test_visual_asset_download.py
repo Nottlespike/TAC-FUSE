@@ -4,33 +4,47 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tac_fuse.assets.catalog import AssetCatalog, AssetEntry
+from tac_fuse.assets.catalog import AssetCatalog, AssetModality, VisualAsset
 from tac_fuse.assets.download import download_auto_assets
 
 
-def _catalog(*entries: AssetEntry) -> AssetCatalog:
+def _asset(
+    asset_id: str,
+    source_url: str | None,
+    local_cache_path: str,
+    *,
+    manual: bool = False,
+    license_name: str = "CC0-1.0",
+) -> VisualAsset:
+    return VisualAsset(
+        id=asset_id,
+        description="test asset",
+        source_url=source_url,
+        license=license_name,
+        attribution="test attribution",
+        capture_date="2026-01-01",
+        modality=AssetModality.AERIAL_ORTHO,
+        expected_labels=["terrain"],
+        local_cache_path=local_cache_path,
+        manual=manual,
+        file_size_mb=None,
+        restriction_note="test only",
+    )
+
+
+def _catalog(tmp_path: Path, *assets: VisualAsset) -> AssetCatalog:
     return AssetCatalog(
-        name="test_assets",
-        description="test catalog",
-        entries=list(entries),
-        manifest_config={"hash_algorithm": "sha256"},
+        sources_path=tmp_path / "visual_asset_sources.yaml",
+        assets={asset.id: asset for asset in assets},
     )
 
 
 def test_downloads_auto_unrestricted_file_url(tmp_path: Path) -> None:
     source = tmp_path / "source.jpg"
     source.write_bytes(b"earth imagery bytes")
-    entry = AssetEntry(
-        id="earth_fixture",
-        modality="orthophoto",
-        source_url=source.as_uri(),
-        restriction="none",
-        local_cache_path="assets/visual/earth/fixture.jpg",
-        auto_download=True,
-        formats=["jpg"],
-    )
+    asset = _asset("earth_fixture", source.as_uri(), "assets/visual/earth/fixture.jpg")
 
-    report = download_auto_assets(_catalog(entry), tmp_path, allow_file_urls=True)
+    report = download_auto_assets(_catalog(tmp_path, asset), tmp_path, allow_file_urls=True)
 
     assert report.summary() == {"downloaded": 1, "total": 1}
     assert (tmp_path / "assets/visual/earth/fixture.jpg").read_bytes() == b"earth imagery bytes"
@@ -40,18 +54,10 @@ def test_downloads_auto_unrestricted_file_url(tmp_path: Path) -> None:
 def test_download_dry_run_does_not_write(tmp_path: Path) -> None:
     source = tmp_path / "source.jpg"
     source.write_bytes(b"preview only")
-    entry = AssetEntry(
-        id="earth_fixture",
-        modality="orthophoto",
-        source_url=source.as_uri(),
-        restriction="none",
-        local_cache_path="assets/visual/earth/fixture.jpg",
-        auto_download=True,
-        formats=["jpg"],
-    )
+    asset = _asset("earth_fixture", source.as_uri(), "assets/visual/earth/fixture.jpg")
 
     report = download_auto_assets(
-        _catalog(entry),
+        _catalog(tmp_path, asset),
         tmp_path,
         dry_run=True,
         allow_file_urls=True,
@@ -61,51 +67,39 @@ def test_download_dry_run_does_not_write(tmp_path: Path) -> None:
     assert not (tmp_path / "assets/visual/earth/fixture.jpg").exists()
 
 
-def test_skips_manual_or_restricted_sources(tmp_path: Path) -> None:
-    manual = AssetEntry(
-        id="manual_source",
-        modality="orthophoto",
-        source_url="https://example.invalid/manual.jpg",
-        restriction="none",
-        local_cache_path="assets/visual/manual.jpg",
-        auto_download=False,
+def test_skips_manual_or_prohibited_sources(tmp_path: Path) -> None:
+    manual = _asset(
+        "manual_source",
+        "https://example.invalid/manual.jpg",
+        "assets/visual/manual.jpg",
+        manual=True,
     )
-    restricted = AssetEntry(
-        id="restricted_source",
-        modality="object_reference",
-        source_url="https://example.invalid/restricted.jpg",
-        restriction="restricted",
-        local_cache_path="assets/visual/restricted.jpg",
-        auto_download=True,
+    prohibited = _asset(
+        "prohibited_source",
+        "https://example.invalid/prohibited.jpg",
+        "assets/visual/prohibited.jpg",
+        license_name="operator_proprietary",
     )
 
     report = download_auto_assets(
-        _catalog(manual, restricted),
+        _catalog(tmp_path, manual, prohibited),
         tmp_path,
-        source_ids=["manual_source", "restricted_source"],
+        source_ids=["manual_source", "prohibited_source"],
     )
 
     assert report.summary() == {"skipped": 2, "total": 2}
     assert {record.reason for record in report.records} == {
-        "auto_download is false",
-        "restriction is restricted",
+        "policy is manual",
+        "policy is prohibited",
     }
 
 
 def test_rejects_non_https_without_file_opt_in(tmp_path: Path) -> None:
     source = tmp_path / "source.jpg"
     source.write_bytes(b"earth imagery bytes")
-    entry = AssetEntry(
-        id="earth_fixture",
-        modality="orthophoto",
-        source_url=source.as_uri(),
-        restriction="none",
-        local_cache_path="assets/visual/earth/fixture.jpg",
-        auto_download=True,
-        formats=["jpg"],
-    )
+    asset = _asset("earth_fixture", source.as_uri(), "assets/visual/earth/fixture.jpg")
 
-    report = download_auto_assets(_catalog(entry), tmp_path)
+    report = download_auto_assets(_catalog(tmp_path, asset), tmp_path)
 
     assert report.has_errors
     assert report.records[0].status == "error"

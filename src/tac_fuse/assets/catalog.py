@@ -13,7 +13,6 @@ Design constraints
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -21,7 +20,6 @@ from typing import Any, ClassVar
 
 import yaml
 from pydantic import BaseModel, Field
-
 
 # ── Enumerations ────────────────────────────────────────────────────────────────
 
@@ -83,7 +81,7 @@ class VisualAsset:
     expected_labels: list[str]
     local_cache_path: str
     manual: bool
-    file_size_mb: float | None
+    file_size_mb: float | str | None
     restriction_note: str
 
     _LICENSE_MAP: ClassVar[dict[str, LicenseType]] = {
@@ -120,19 +118,6 @@ class VisualAsset:
 # ── Pydantic validation layer ──────────────────────────────────────────────────
 
 
-class ExpectedLabelsField(list[str]):
-    """List of expected label strings; empty list is allowed."""
-
-    @classmethod
-    def validate(cls, v: Any) -> list[str]:
-        if not isinstance(v, list):
-            raise ValueError(f"expected_labels must be a list, got {type(v).__name__}")
-        for item in v:
-            if not isinstance(item, str):
-                raise ValueError(f"each label must be a string, got {type(item).__name__}")
-        return list(v)
-
-
 class AssetEntryModel(BaseModel):
     """Validated YAML entry for one asset."""
 
@@ -150,7 +135,7 @@ class AssetEntryModel(BaseModel):
     modality: AssetModality = Field(
         description="One of the AssetModality enum values"
     )
-    expected_labels: ExpectedLabelsField = Field(
+    expected_labels: list[str] = Field(
         default_factory=list,
         description="Labels the asset is expected to contain",
     )
@@ -161,7 +146,7 @@ class AssetEntryModel(BaseModel):
         default=False,
         description="If True, auto-download is prohibited; operator must acquire manually",
     )
-    file_size_mb: float | None = Field(
+    file_size_mb: float | str | None = Field(
         default=None,
         description="Approximate size in MB; null means unknown",
     )

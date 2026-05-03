@@ -1,67 +1,169 @@
-# TAC-FUSE visual-asset source registry
-# The prepare path validates local files only. The cache path downloads only
-# entries that explicitly set auto_download: true and restriction: none.
+# TAC-FUSE — Visual Asset Sources Configuration
+#
+# This file documents known visual assets that can be used for CV demos.
+# Proprietary, commercial, or license-restricted sources are marked
+# manual=true so they are never auto-downloaded or checked into version control.
+#
+# Operators supply their own orthophoto / drone / texture files.
+# This registry records metadata only — no bits are embedded here.
 
-name: visual_asset_sources
-description: >
-  Registry of real Earth imagery, orthophotos, drone POV frames, and reference
-  imagery for TAC-FUSE visualization and computer-vision demos.
+# ── Modality definitions ────────────────────────────────────────────────────────
+# aerial_ortho   — georeferenced overhead imagery (GeoTIFF, JPEG2000, PNG)
+# drone_pov      — video frames from UAV-mounted cameras
+# ground_texture — close-range texture captures for materials / surfaces
+# material_ref   — building / road / vegetation reference images
+# object_ref     — vehicle / object reference imagery for detection benchmarks
 
-defaults:
-  auto_download: false
-  license: "operator-provided"
-  restriction: "none"
-  cache_root: "assets/visual"
+# ── Asset registry ──────────────────────────────────────────────────────────────
+assets:
 
-sources:
-  - id: nasa_blue_marble_january
+  # ── Aerial / Satellite ───────────────────────────────────────────────────────
+  nasa_blue_marble_january:
     description: >
       NASA Blue Marble: Next Generation global Earth imagery with topography
       and bathymetry. This gives the browser a real satellite-derived visual
       asset immediately while higher-resolution field-area orthophotos are
       staged separately.
-    modality: orthophoto
-    capture_date: "2004-01-01"
     source_url: "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/january/world.topo.bathy.200401.3x5400x2700.jpg"
     license: "NASA Media Usage Guidelines"
-    restriction: "none"
     attribution: "NASA Earth Observatory Blue Marble: Next Generation."
-    expected_labels:
-      - "earth_surface"
-      - "terrain"
-      - "vegetation"
-      - "water"
-      - "snow"
-      - "desert"
+    capture_date: "2004-01-01"
+    modality: "aerial_ortho"
+    expected_labels: ["earth_surface", "terrain", "vegetation", "water", "snow", "desert"]
     local_cache_path: "assets/visual/earth/blue_marble_january_5400.jpg"
-    auto_download: true
-    formats: ["jpg"]
-    resolution_m_per_px: 8000
-    max_download_bytes: 25000000
+    manual: false
+    file_size_mb: 4.5
+    restriction_note: >
+      NASA imagery is generally available under NASA media usage guidelines;
+      credit NASA Earth Observatory and do not imply NASA endorsement.
 
-  - id: orthophoto_field_area
+  usgs_aerial_sample:
+    description: "Sample USGS aerial orthophoto tiles for regional demo areas"
+    source_url: "https://www.sciencebase.gov/catalog/item/xxxxxxxx"
+    license: "CC0-1.0"
+    attribution: "U.S. Geological Survey (USGS)"
+    capture_date: "2023-01-15"
+    modality: "aerial_ortho"
+    expected_labels: ["road", "building", "vegetation", "water", "bare_ground"]
+    local_cache_path: "assets/aerial/usgs_ortho_sample"
+    manual: true          # large dataset — operator downloads after approval
+    file_size_mb: ~500
+    restriction_note: "USGS data is public domain; operator still triggers bulk download"
+
+  sentinel_2_composite:
+    description: "Sentinel-2 false-color seasonal composite (10 m/pixel)"
+    source_url: "https://scihub.copernicus.eu/"
+    license: "CC BY-SA 3.0 IGO"
+    attribution: "Copernicus / European Space Agency"
+    capture_date: "2024-06-01"
+    modality: "aerial_ortho"
+    expected_labels: ["vegetation", "urban", "bare_soil", "water", "cloud"]
+    local_cache_path: "assets/aerial/sentinel2_composite"
+    manual: true
+    file_size_mb: ~1200
+    restriction_note: "Requires Copernicus EO login; download managed by operator"
+
+  # ── Drone POV ─────────────────────────────────────────────────────────────────
+  tac_fuse_demo_drone_frames:
+    description: "Operator-supplied drone video frames (RGB, 1920x1080)"
+    source_url: null       # operator manages their own storage / Foundry media-set
+    license: "operator_proprietary"
+    attribution: "Provided by mission operator"
+    capture_date: null
+    modality: "drone_pov"
+    expected_labels: ["person", "vehicle", "structure", "road", "vegetation"]
+    local_cache_path: "assets/drone/demo_frames"
+    manual: true
+    file_size_mb: null
+    restriction_note: >
+      Never store actual drone footage in this repo. Point local_cache_path
+      to a Foundry media-set RID or an operator-managed local directory.
+      The SigLIP2 pipeline references these by dataset ID, not by file content.
+
+  # ── Ground-level textures ─────────────────────────────────────────────────────
+  openstreetmap_tiles:
+    description: "Map tiles for ground-reference texture overlays"
+    source_url: "https://tile.openstreetmap.org/"
+    license: "ODbL"
+    attribution: "OpenStreetMap contributors"
+    capture_date: null
+    modality: "ground_texture"
+    expected_labels: ["road", "sidewalk", "building_outline", "landuse"]
+    local_cache_path: "assets/textures/osm_tiles"
+    manual: false         # small tiles, reasonable ODbL attribution
+    file_size_mb: ~50
+    restriction_note: "ODbL requires attribution; do not strip tile metadata"
+
+  # ── Material / surface references ─────────────────────────────────────────────
+  cityscapes_reference:
+    description: "Cityscapes dataset reference images for material segmentation"
+    source_url: "https://www.cityscapes-dataset.com/"
+    license: "CC BY-NC-ND 3.0"
+    attribution: "Cityscapes Dataset, Marius Cordts et al."
+    capture_date: "2016-03-14"
+    modality: "material_ref"
+    expected_labels: ["road", "sidewalk", "building", "pole", "traffic_sign", "vegetation", "sky"]
+    local_cache_path: "assets/materials/cityscapes_ref"
+    manual: true
+    file_size_mb: ~18000
+    restriction_note: >
+      Non-commercial research use only. Do NOT redistribute. Operator must
+      register at cityscapes-dataset.com and download manually.
+
+  isaac_sim_synthetic_terrain:
+    description: "NVIDIA Isaac Sim synthetic terrain renders (road/building/vegetation)"
+    source_url: null
+    license: "NVIDIA Isaac Sim EULA"
+    attribution: "NVIDIA Corporation"
+    capture_date: null
+    modality: "material_ref"
+    expected_labels: ["road", "building", "vegetation", "terrain", "sky"]
+    local_cache_path: "assets/materials/isaac_sim_terrain"
+    manual: true
+    file_size_mb: null
+    restriction_note: >
+      PROHIBITED from training or fine-tuning any commercial model.
+      Permitted only for demo visualisation within this TAC-FUSE demo environment.
+      Check in NEVER. Reference only via Foundry dataset RID.
+
+  # ── Object / vehicle references ──────────────────────────────────────────────
+  coco_2017_vehicle_subset:
+    description: "COCO 2017 images containing vehicle classes (car, truck, bus, motorcycle)"
+    source_url: "https://cocodataset.org/"
+    license: "CC BY 4.0"
+    attribution: "COCO Consortium"
+    capture_date: "2017-01-01"
+    modality: "object_ref"
+    expected_labels: ["car", "truck", "bus", "motorcycle", "bicycle", "person"]
+    local_cache_path: "assets/objects/coco_vehicle_subset"
+    manual: true
+    file_size_mb: ~800
+    restriction_note: "Download COCO 2017 Val2017 manually; filter by category using provided script"
+
+  # ── SigLIP2 pipeline labels ───────────────────────────────────────────────────
+  siglip2_field_labels:
     description: >
-      Operator-provided orthophoto mosaic for the default field-area bounding
-      box. Replace source_url with a real endpoint only after confirming the
-      license permits local caching and demo redistribution.
-    modality: orthophoto
+      SigLIP2-compatible label taxonomy for field-condition classification.
+      Covers weather, terrain, lighting, and occlusion classes — not tied
+      to any specific imagery source.
+    source_url: null
+    license: "Apache-2.0"
+    attribution: "TAC-FUSE project"
     capture_date: "2025-01-01"
-    source_url: ""
-    license: "operator-provided"
-    restriction: "manual"
-    attribution: "Operator-supplied aerial imagery. Verify license before redistribution."
+    modality: "aerial_ortho"    # cross-cutting; applies to all modalities
     expected_labels:
-      - "building"
-      - "road"
-      - "vegetation"
-      - "water"
-      - "bare_ground"
-    local_cache_path: "assets/visual/orthophoto_field_area.tif"
-    auto_download: false
-    formats: ["tif", "png", "jpg"]
-    resolution_m_per_px: 0.15
-
-manifest:
-  output_path: "configs/assets/visual_asset_manifest.json"
-  local_only: true
-  hash_algorithm: "sha256"
+      - "clear_road"
+      - "muddy_road"
+      - "flooded_road"
+      - "dusty_terrain"
+      - "vegetation_occlusion"
+      - "low_visibility_smoke"
+      - "low_visibility_fog"
+      - "low_visibility_haze"
+      - "night_lighting"
+      - "daytime_direct_sun"
+      - "shadow_heavy"
+    local_cache_path: "assets/labels/siglip2_field_taxonomy"
+    manual: false    # small YAML file; can be generated / versioned directly
+    file_size_mb: ~0.01
+    restriction_note: "Generated label taxonomy — no provenance concerns"

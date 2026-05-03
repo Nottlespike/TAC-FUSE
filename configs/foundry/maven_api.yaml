@@ -1,0 +1,57 @@
+# TAC-FUSE — Maven Smart System / Foundry API Configuration
+#
+# Copy this file to maven_api.local.yaml and populate real values.
+# NEVER commit maven_api.local.yaml to version control.
+# Env-var overrides (see below) are the preferred deployment pattern.
+
+# ── Connection ──────────────────────────────────────────────────────────────
+# Hostname of your Palantir Foundry instance (no trailing slash).
+# Override via: FOUNDRY_HOSTNAME
+# foundry_hostname: "https://your-org.palantirfoundry.com"
+
+# ── Auth ────────────────────────────────────────────────────────────────────
+# Personal access token for API calls.
+# Override via: FOUNDRY_TOKEN
+# foundry_token: "your-token-here"
+
+# Optional OAuth 2.0 client-credentials flow (preferred for production service accounts).
+# Override via: OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET / OAUTH_TOKEN_URL
+# oauth:
+#   client_id: "your-client-id"
+#   client_secret: "your-client-secret"
+#   token_url: "https://your-org.palantirfoundry.com/oauth/token"
+
+# ── Maven Ontology ──────────────────────────────────────────────────────────
+# Name (e.g. "maven") or RID of the Maven ontology backing this mission.
+# Override via: MAVEN_ONTOLOGY_NAME
+# maven_ontology_name: "maven"
+
+# ── Datasets ────────────────────────────────────────────────────────────────
+# Foundry dataset RID that holds serialized mission packets (object sets, tasks, alerts).
+# Override via: FOUNDRY_MISSION_DATASET_RID
+# foundry_mission_dataset_rid: "ri-foundry-dataset-uuid"
+
+# Foundry dataset RID + branch for live event records (mission_events stream).
+# Override via: FOUNDRY_EVENTS_DATASET_RID / FOUNDRY_EVENTS_BRANCH
+# foundry_events_dataset_rid: "ri-foundry-dataset-uuid"
+# foundry_events_branch: "main"
+
+# Foundry media-set RID for POV imagery uploaded via /media endpoint.
+# Override via: FOUNDRY_MEDIA_SET_RID
+# foundry_media_set_rid: "ri-foundry-media-set-uuid"
+
+# ── Ontology Actions ────────────────────────────────────────────────────────
+# Optional list of ontology action API names invoked on command / status handoff.
+# Override via: MAVEN_COMMAND_ACTION / MAVEN_STATUS_ACTION
+# maven_command_action: "MavenCommand"
+# maven_status_action: "MavenStatus"
+
+# ── Scopes ──────────────────────────────────────────────────────────────────
+# OAuth scopes requested during the token-exchange phase.
+# Override via: FOUNDRY_REQUESTED_SCOPES (comma-separated string)
+# foundry_requested_scopes:
+#   - "datasets:write"
+#   - "streams:write"
+#   - "media-sets:write"
+#   - "ontology:read"
+#   - "ontology:write"

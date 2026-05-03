@@ -239,8 +239,8 @@ function buildBvhNodes() {
 function modeCopy() {
   return {
     sync: commandQueue.length,
-    foundry: "Maven packet staged",
-    npu: "feeds fused locally",
+    foundry: "Enterprise sync staged",
+    npu: "C2 local",
   };
 }
 
@@ -644,9 +644,10 @@ function renderHardware(drone, hits) {
   const status = modeCopy();
   const bvhMs = rayPath === "rtx" ? 1.4 + hits.length * 0.16 : 8.8 + hits.length * 0.7;
   const rows = [
+    ["C2 authority", "operator tasking applies locally", "good"],
     ["Earth imagery", earthImagery.ready ? "NASA Blue Marble cached" : "waiting for local cache", earthImagery.ready ? "good" : "watch"],
-    ["Route geometry", rayPath === "rtx" ? "accelerated locally" : "CPU parity view", rayPath === "rtx" ? "good" : "watch"],
-    ["Query", `${hits.length} candidates · ${bvhMs.toFixed(1)} ms`, rayPath === "rtx" ? "good" : "watch"],
+    ["Collision BVH", rayPath === "rtx" ? "RT cores accelerate path checks" : "CPU parity path checks", rayPath === "rtx" ? "good" : "watch"],
+    ["Route solver", `${hits.length} obstacles · ${bvhMs.toFixed(1)} ms`, rayPath === "rtx" ? "good" : "watch"],
     ["Mission cache", `${status.sync} staged events`, "local"],
   ];
   document.querySelector("#hardware-list").innerHTML = rows
@@ -655,11 +656,13 @@ function renderHardware(drone, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind}">${kind}</span></div>`,
     )
     .join("");
-  document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "accelerated geometry" : "CPU geometry";
+  document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "collision BVH" : "CPU route check";
   document.querySelector("#bvh-badge").textContent =
-    earthImagery.ready ? "Earth imagery cached" : "Earth imagery pending";
+    rayPath === "rtx" ? "Collision BVH active" : "CPU collision parity";
   document.querySelector("#map-hud-copy").textContent =
-    earthImagery.ready ? "NASA Blue Marble raster in local cache" : "Run scripts/cache_visual_assets.py to cache Earth imagery";
+    earthImagery.ready
+      ? "Cached Earth raster plus local collision/path solver"
+      : "Run scripts/cache_visual_assets.py to cache Earth imagery";
   document.querySelector("#range-label").textContent = `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`;
   document.querySelector("#pov-title").textContent = `${drone.callsign} POV`;
 }
@@ -681,7 +684,7 @@ function renderAlerts(drone, hits, scores) {
   } else if (scores[0][0] === "restricted volume in POV") {
     alerts.push(["critical", "Restricted volume visible in POV"]);
   }
-  alerts.push(["watch", "Offline authority active; Maven packet staged"]);
+  alerts.push(["watch", "Offline C2 authority active; enterprise sync staged"]);
   if (drone.battery < 70) alerts.push(["watch", `${drone.callsign} battery near return threshold`]);
   if (alerts.length === 0) alerts.push(["watch", "Local BVH pass clear"]);
   document.querySelector("#alert-list").innerHTML = alerts
@@ -770,8 +773,10 @@ document.querySelector("#prev-frame").addEventListener("click", () => cycleSelec
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
 document.querySelector("#toggle-bvh").addEventListener("click", () => {
   rayPath = rayPath === "rtx" ? "cpu" : "rtx";
-  pushLog(`BVH path switched to ${rayPath === "rtx" ? "RTX ray cores" : "CPU parity"} locally.`);
+  pushLog(
+    `Collision/path solver switched to ${rayPath === "rtx" ? "RT core acceleration" : "CPU parity"} locally.`,
+  );
 });
 
-pushLog("Offline field node started; local graphics and Earth imagery cache active.");
+pushLog("Offline C2 node started; operator tasking and local mission cache active.");
 requestAnimationFrame(tick);

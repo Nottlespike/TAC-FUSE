@@ -16,16 +16,15 @@ Public API
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
-import yaml
-
 from tac_fuse.assets.catalog import AssetCatalog, VisualAsset, load_catalog
+from tac_fuse.assets.download import DownloadRecord, DownloadReport, download_auto_assets
 
 __all__ = [
     "AssetCatalog",
+    "DownloadRecord",
+    "DownloadReport",
     "VisualAsset",
+    "download_auto_assets",
     "load_catalog",
     "generate_manifest",
     "validate_local",
