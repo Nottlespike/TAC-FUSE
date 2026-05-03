@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   self-improvement tasks, with demo polish treated as a first-class phase.
 - Polished the browser demo top bar and 3D object map with non-wrapping mode
   controls, glass detection labels, and an object-pass quantification panel.
+- Compact the Local C2 controls and metric strip so route/object/detector
+  status no longer consumes a large empty row under the 3D map.
 - Formatted contributor-feed latency and POV telemetry as human-readable values
   and removed the stretched world-raster POV.
 - Preserved default Maven/Foundry OAuth scopes when no scope override is set.

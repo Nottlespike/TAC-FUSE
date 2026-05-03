@@ -145,8 +145,143 @@ class AlertingEngine:
         return list(self._alerts)
 
     def clear(self) -> None:
-        """Clear all stored alerts."""
+        """Clear all stored alerts and dedup state."""
         self._alerts.clear()
+        self._dedup_window.clear()
+
+    def add_restricted_zone(
+        self,
+        zone_id: str,
+        zone_lat: float,
+        zone_lon: float,
+        zone_radius_m: float,
+    ) -> None:
+        """Register a restricted zone for automatic breach detection.
+
+        Once registered, any GNSS/telemetry event that updates an asset's
+        position will be automatically checked against this zone.
+        """
+        self._zone_defs[zone_id] = (zone_lat, zone_lon, zone_radius_m)
+
+    def _is_duplicate(self, dedup_key: str) -> bool:
+        """Check if an alert with this dedup key was recently emitted."""
+        last_ts = self._dedup_window.get(dedup_key)
+        if last_ts is None:
+            return False
+        now = datetime.now(UTC).timestamp()
+        return (now - last_ts) < self.dedup_cooldown_s
+
+    def _record_dedup(self, dedup_key: str) -> None:
+        """Record that an alert was emitted for this dedup key."""
+        self._dedup_window[dedup_key] = datetime.now(UTC).timestamp()
+
+    def _extract_gnss_position(self, event: SensorEvent) -> _AssetPosition | None:
+        """Extract asset position from a GNSS/telemetry event payload.
+
+        Returns None if the event does not contain position data.
+        """
+        payload = event.payload
+        asset_id = payload.get("asset_id") or payload.get("platform_id")
+        if not asset_id:
+            return None
+
+        # Check for position data in payload.data (sensor emulator format)
+        data = payload.get("data", {})
+        position = data.get("position")
+        if position and "lat" in position and "lon" in position:
+            velocity = data.get("velocity", {})
+            orientation = data.get("orientation", {})
+            heading = orientation.get("yaw", 0.0)
+            speed = (velocity.get("vx_mps", 0.0) ** 2 + velocity.get("vy_mps", 0.0) ** 2) ** 0.5
+            try:
+                event_ts = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
+                if event_ts.tzinfo is None:
+                    event_ts = event_ts.replace(tzinfo=UTC)
+                ts = event_ts.timestamp()
+            except (ValueError, TypeError):
+                ts = datetime.now(UTC).timestamp()
+            return _AssetPosition(
+                asset_id=asset_id,
+                lat=float(position["lat"]),
+                lon=float(position["lon"]),
+                heading=heading,
+                speed=speed,
+                timestamp=ts,
+            )
+
+        # Check for position data in top-level payload (drone_telemetry format)
+        lat = payload.get("lat") or payload.get("latitude")
+        lon = payload.get("lon") or payload.get("longitude")
+        if lat is not None and lon is not None:
+            heading = payload.get("heading", 0.0)
+            speed = payload.get("speed", 0.0)
+            try:
+                event_ts = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
+                if event_ts.tzinfo is None:
+                    event_ts = event_ts.replace(tzinfo=UTC)
+                ts = event_ts.timestamp()
+            except (ValueError, TypeError):
+                ts = datetime.now(UTC).timestamp()
+            return _AssetPosition(
+                asset_id=asset_id,
+                lat=float(lat),
+                lon=float(lon),
+                heading=float(heading),
+                speed=float(speed),
+                timestamp=ts,
+            )
+
+        return None
+
+    def _auto_position_breach_check(self, pos: _AssetPosition) -> list[OperatorAlert]:
+        """Check a tracked position against all registered restricted zones."""
+        triggered: list[OperatorAlert] = []
+        for zone_id, (z_lat, z_lon, z_radius) in self._zone_defs.items():
+            dedup_key = f"pos_breach:{pos.asset_id}:{zone_id}"
+            if self._is_duplicate(dedup_key):
+                continue
+            alert = self.check_position_breach(
+                asset_id=pos.asset_id,
+                lat=pos.lat,
+                lon=pos.lon,
+                zone_id=zone_id,
+                zone_lat=z_lat,
+                zone_lon=z_lon,
+                zone_radius_m=z_radius,
+            )
+            if alert is not None:
+                self._record_dedup(dedup_key)
+                triggered.append(alert)
+        return triggered
+
+    def _auto_route_conflict_check(self, updated_pos: _AssetPosition) -> list[OperatorAlert]:
+        """Check an updated position against all other tracked positions for conflicts."""
+        triggered: list[OperatorAlert] = []
+        for asset_id, other_pos in self._asset_positions.items():
+            if asset_id == updated_pos.asset_id:
+                continue
+            first_asset = min(updated_pos.asset_id, asset_id)
+            second_asset = max(updated_pos.asset_id, asset_id)
+            dedup_key = f"route_conflict:{first_asset}:{second_asset}"
+            if self._is_duplicate(dedup_key):
+                continue
+            alert = self.check_route_conflict(
+                asset_a_id=updated_pos.asset_id,
+                asset_a_lat=updated_pos.lat,
+                asset_a_lon=updated_pos.lon,
+                asset_a_heading=updated_pos.heading,
+                asset_a_speed=updated_pos.speed,
+                asset_b_id=other_pos.asset_id,
+                asset_b_lat=other_pos.lat,
+                asset_b_lon=other_pos.lon,
+                asset_b_heading=other_pos.heading,
+                asset_b_speed=other_pos.speed,
+                conflict_range_m=self.route_conflict_range_m,
+            )
+            if alert is not None:
+                self._record_dedup(dedup_key)
+                triggered.append(alert)
+        return triggered
 
     def _add_alert(self, alert: OperatorAlert) -> OperatorAlert:
         """Add an alert to the internal list and return it."""
@@ -160,7 +295,8 @@ class AlertingEngine:
         """Process a single SensorEvent and return any triggered alerts.
 
         This is the main entry point for the sensor/fusion pipeline.
-        Each event is checked against all alert conditions.
+        Each event is checked against all alert conditions, with dedup
+        suppression to avoid alert storms.
         """
         triggered: list[OperatorAlert] = []
 
@@ -171,52 +307,85 @@ class AlertingEngine:
 
         # Check for stale feed
         if asset_id:
+            dedup_key = f"stale:{asset_id}"
             try:
                 event_ts = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
                 now = datetime.now(UTC)
                 if event_ts.tzinfo is None:
                     event_ts = event_ts.replace(tzinfo=UTC)
                 age = (now - event_ts).total_seconds()
-                if age > self.stale_threshold_s:
+                if age > self.stale_threshold_s and not self._is_duplicate(dedup_key):
                     triggered.append(self._create_stale_alert(asset_id, sensor_id, age))
+                    self._record_dedup(dedup_key)
             except (ValueError, TypeError):
                 pass  # Skip staleness check for invalid timestamps
 
         # Check for dropped frame
         if payload.get("is_dropped_frame"):
-            triggered.append(self._create_dropped_frame_alert(asset_id, sensor_id, event))
+            dedup_key = f"dropped:{asset_id or 'unknown'}:{sensor_id}"
+            if not self._is_duplicate(dedup_key):
+                triggered.append(self._create_dropped_frame_alert(asset_id, sensor_id, event))
+                self._record_dedup(dedup_key)
 
         # Check for sensor degradation
         degradation = payload.get("degradation_mode", "clear")
         if degradation and degradation != "clear":
             quality = payload.get("quality_score", 1.0)
             if quality < 0.6:
-                triggered.append(
-                    self._create_sensor_degraded_alert(asset_id, sensor_id, degradation, quality)
-                )
+                dedup_key = f"degraded:{asset_id or 'unknown'}:{degradation}"
+                if not self._is_duplicate(dedup_key):
+                    triggered.append(
+                        self._create_sensor_degraded_alert(asset_id, sensor_id, degradation, quality)
+                    )
+                    self._record_dedup(dedup_key)
 
         # Check confidence drop
         if event.confidence < self.confidence_drop_threshold:
-            triggered.append(
-                self._create_confidence_drop_alert(asset_id, sensor_id, event.confidence)
-            )
+            dedup_key = f"conf_drop:{asset_id or 'unknown'}:{sensor_id}"
+            if not self._is_duplicate(dedup_key):
+                triggered.append(
+                    self._create_confidence_drop_alert(asset_id, sensor_id, event.confidence)
+                )
+                self._record_dedup(dedup_key)
 
         # Check battery level (from telemetry events)
         battery = payload.get("battery_pct")
         if battery is not None and battery < self.battery_low_threshold:
-            triggered.append(self._create_battery_low_alert(asset_id, sensor_id, battery))
+            dedup_key = f"battery:{asset_id or 'unknown'}"
+            if not self._is_duplicate(dedup_key):
+                triggered.append(self._create_battery_low_alert(asset_id, sensor_id, battery))
+                self._record_dedup(dedup_key)
 
-        # Check for video cues (object detections)
+        # Check for video cues (object detections) — optional, not center of work
         detections = payload.get("data", {}).get("detections", [])
         if detections:
-            triggered.append(
-                self._create_video_cue_alert(asset_id, sensor_id, detections, event)
-            )
+            dedup_key = f"video_cue:{asset_id or 'unknown'}:{sensor_id}"
+            if not self._is_duplicate(dedup_key):
+                triggered.append(
+                    self._create_video_cue_alert(asset_id, sensor_id, detections, event)
+                )
+                self._record_dedup(dedup_key)
 
         # Check for RF cues (thermal signatures or RF-specific data)
         signatures = payload.get("data", {}).get("signatures", [])
         if signatures:
-            triggered.append(self._create_rf_cue_alert(asset_id, sensor_id, signatures, event))
+            dedup_key = f"rf_cue:{asset_id or 'unknown'}:{sensor_id}"
+            if not self._is_duplicate(dedup_key):
+                triggered.append(self._create_rf_cue_alert(asset_id, sensor_id, signatures, event))
+                self._record_dedup(dedup_key)
+
+        # Auto-check: extract GNSS position and check geometry
+        pos = self._extract_gnss_position(event)
+        if pos is not None:
+            self._asset_positions[pos.asset_id] = pos
+            # Auto position breach check against registered zones
+            if self._zone_defs:
+                breach_alerts = self._auto_position_breach_check(pos)
+                triggered.extend(breach_alerts)
+            # Auto route conflict check against other tracked assets
+            if len(self._asset_positions) > 1:
+                conflict_alerts = self._auto_route_conflict_check(pos)
+                triggered.extend(conflict_alerts)
 
         # Update last-seen tracking
         if asset_id:
@@ -536,3 +705,71 @@ class AlertingEngine:
             for a in self._alerts
             if a.severity in (AlertSeverity.CRITICAL.value, AlertSeverity.HIGH.value)
         ]
+
+    def persist_alerts(self, store: Any) -> int:
+        """Persist all alerts to a MissionStateStore.
+
+        Each alert is persisted via store.create_alert() with the alert
+        severity and message. Returns the number of alerts persisted.
+        """
+        count = 0
+        for alert in self._alerts:
+            store.create_alert(
+                message=alert.message,
+                severity=alert.severity,
+                payload=alert.to_alert_payload(),
+            )
+            count += 1
+        return count
+
+    def get_operator_summary(self) -> dict[str, Any]:
+        """Return a prioritized operator alert summary.
+
+        The summary groups alerts by severity (critical first) and provides
+        counts per type. This is suitable for operator display or runbook
+        consumption without requiring cloud infrastructure.
+        """
+        severity_order = {
+            AlertSeverity.CRITICAL.value: 0,
+            AlertSeverity.HIGH.value: 1,
+            AlertSeverity.MEDIUM.value: 2,
+            AlertSeverity.LOW.value: 3,
+        }
+
+        by_severity: dict[str, list[dict[str, Any]]] = {
+            "critical": [], "high": [], "medium": [], "low": []
+        }
+        type_counts: dict[str, int] = {}
+
+        for alert in self._alerts:
+            entry = {
+                "alert_id": alert.alert_id,
+                "alert_type": alert.alert_type,
+                "message": alert.message,
+                "asset_id": alert.asset_id,
+                "sensor_id": alert.sensor_id,
+                "timestamp": alert.timestamp,
+            }
+            by_severity[alert.severity].append(entry)
+            type_counts[alert.alert_type] = type_counts.get(alert.alert_type, 0) + 1
+
+        # Sort by severity (critical first)
+        sorted_types = sorted(
+            type_counts.items(),
+            key=lambda x: max(
+                severity_order.get(a.severity, 99)
+                for a in self._alerts
+                if a.alert_type == x[0]
+            ),
+        )
+
+        return {
+            "total_alerts": len(self._alerts),
+            "actionable_count": len(self.get_actionable_alerts()),
+            "critical_count": len(by_severity["critical"]),
+            "high_count": len(by_severity["high"]),
+            "medium_count": len(by_severity["medium"]),
+            "low_count": len(by_severity["low"]),
+            "type_counts": dict(sorted_types),
+            "by_severity": by_severity,
+        }

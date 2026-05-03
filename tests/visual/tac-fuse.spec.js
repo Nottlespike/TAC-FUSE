@@ -52,10 +52,10 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(metricsBox).not.toBeNull();
   expect(povBox).not.toBeNull();
   expect(lowerGridBox).not.toBeNull();
-  expect(commandBox.width).toBeGreaterThan(120);
-  expect(commandBox.height).toBeGreaterThan(120);
+  expect(commandBox.width).toBeGreaterThan(520);
+  expect(commandBox.height).toBeLessThan(90);
   expect(metricsBox.width).toBeGreaterThan(240);
-  expect(metricsBox.height).toBeGreaterThan(120);
+  expect(metricsBox.height).toBeLessThan(82);
   expect(povBox.width).toBeGreaterThan(520);
   expect(povBox.height).toBeGreaterThan(280);
   expect(lowerGridBox.height).toBeGreaterThan(200);

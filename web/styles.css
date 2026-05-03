@@ -496,8 +496,8 @@ canvas {
 
 .operator-dock {
     display: grid;
-    grid-template-columns: 180px minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
 }
 
 .right-grid {
@@ -590,7 +590,22 @@ canvas {
 }
 
 .command-panel {
-    padding-bottom: 8px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+}
+
+.command-panel h2 {
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+.command-stack {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(70px, 1fr));
+    gap: 8px;
 }
 
 .command-btn,
@@ -631,6 +646,7 @@ canvas {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
+    align-self: start;
 }
 
 .metric-strip div,
@@ -643,7 +659,9 @@ canvas {
     border: 1px solid var(--line);
     border-radius: 6px;
     background: var(--panel);
-    padding: 10px;
+    min-height: 58px;
+    align-content: center;
+    padding: 8px 10px;
 }
 
 .status-row {
@@ -868,5 +886,13 @@ canvas {
 
     .metric-strip {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .command-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .command-stack {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
