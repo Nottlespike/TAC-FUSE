@@ -88,6 +88,18 @@ class OperatorAlert:
         }
 
 
+@dataclass
+class _AssetPosition:
+    """Tracked asset position for auto geometry checks."""
+
+    asset_id: str
+    lat: float
+    lon: float
+    heading: float = 0.0
+    speed: float = 0.0
+    timestamp: float = 0.0
+
+
 class AlertingEngine:
     """Local alerting engine for sensor/fusion events.
 
@@ -109,13 +121,23 @@ class AlertingEngine:
         battery_low_threshold: float = 20.0,
         confidence_drop_threshold: float = 0.5,
         restricted_zones: set[str] | None = None,
+        dedup_cooldown_s: float = 10.0,
+        route_conflict_range_m: float = 50.0,
     ) -> None:
         self.stale_threshold_s = stale_threshold_s
         self.battery_low_threshold = battery_low_threshold
         self.confidence_drop_threshold = confidence_drop_threshold
         self.restricted_zones = restricted_zones or set()
+        self.dedup_cooldown_s = dedup_cooldown_s
+        self.route_conflict_range_m = route_conflict_range_m
         self._alerts: list[OperatorAlert] = []
         self._last_seen: dict[str, float] = {}  # asset_id -> last timestamp
+        # Dedup: (dedup_key) -> last alert timestamp (epoch seconds)
+        self._dedup_window: dict[str, float] = {}
+        # Tracked asset positions for auto geometry checks
+        self._asset_positions: dict[str, _AssetPosition] = {}
+        # Restricted zone definitions: zone_id -> (lat, lon, radius_m)
+        self._zone_defs: dict[str, tuple[float, float, float]] = {}
 
     @property
     def alerts(self) -> list[OperatorAlert]:
