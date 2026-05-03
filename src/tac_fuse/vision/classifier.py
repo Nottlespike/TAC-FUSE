@@ -418,14 +418,21 @@ class PackagedSigLIP2Classifier(BaseClassifier):
         status = inspect_packaged_siglip2_package(self.manifest, model_dir=self.model_dir)
         return [Path(path) for path in status["missing_paths"]]
 
+    @staticmethod
+    def _module_available(name: str) -> bool:
+        try:
+            return importlib.util.find_spec(name) is not None
+        except ModuleNotFoundError:
+            return False
+
     def _dependency_status(self) -> dict[str, bool]:
         return {
-            "PIL": importlib.util.find_spec("PIL") is not None,
-            "google.protobuf": importlib.util.find_spec("google.protobuf") is not None,
-            "sentencepiece": importlib.util.find_spec("sentencepiece") is not None,
-            "torch": importlib.util.find_spec("torch") is not None,
-            "torchvision": importlib.util.find_spec("torchvision") is not None,
-            "transformers": importlib.util.find_spec("transformers") is not None,
+            "PIL": self._module_available("PIL"),
+            "google.protobuf": self._module_available("google.protobuf"),
+            "sentencepiece": self._module_available("sentencepiece"),
+            "torch": self._module_available("torch"),
+            "torchvision": self._module_available("torchvision"),
+            "transformers": self._module_available("transformers"),
         }
 
     def load(self) -> None:

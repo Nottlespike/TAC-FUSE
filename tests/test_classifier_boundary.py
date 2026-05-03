@@ -1,5 +1,6 @@
 """Tests for the unified classifier boundary in tac_fuse.vision.classifier."""
 
+import importlib.util
 import json
 import tempfile
 from pathlib import Path
@@ -446,6 +447,27 @@ class TestPackagedSigLIP2Classifier:
         assert status["ready"] is False
         assert status["model_present"] is False
         assert "classifier_head.pt" in status["missing_paths"][0]
+
+    def test_dependency_status_handles_missing_namespace_parent(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        manifest_path, model_dir = _write_package_manifest(tmp_path)
+        original_find_spec = importlib.util.find_spec
+
+        def fake_find_spec(name: str):
+            if name == "google.protobuf":
+                raise ModuleNotFoundError("No module named 'google'")
+            return original_find_spec(name)
+
+        monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+        clf = PackagedSigLIP2Classifier(
+            model_path=model_dir,
+            manifest_path=manifest_path,
+        )
+
+        assert clf.inspect_status()["runtime_dependencies"]["google.protobuf"] is False
 
     def test_packaged_classifier_ready_with_runtime_dependencies(
         self,
