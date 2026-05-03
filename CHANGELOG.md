@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Alpha test plan and queueable polish task pack focused on route-guard C2
+  quality, RTX/BVH pathing, Strix NPU zero-shot cue labels, and trained-model
+  readiness.
 - Two-to-five-minute judging demo script covering the route-guard denied
   connectivity story, the exact operator beats, rubric close, and Strix Intel
   NPU real-CV integration lane with fallback language.

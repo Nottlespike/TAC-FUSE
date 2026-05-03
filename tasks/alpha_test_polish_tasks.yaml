@@ -1,0 +1,181 @@
+metadata:
+  generated_by: manual-alpha-test-plan
+  generated_at: '2026-05-03T09:36:06Z'
+  scope: contrib/TAC-FUSE/
+  mission_thesis: Hardened edge C2 keeps a route guarded after internet, command reachback,
+    and enterprise sync are gone.
+  workflow_order:
+  - Explore
+  - Create
+  - Beautify
+  - Cleanup
+  alpha_test_gates:
+  - Route Guard C2
+  - Visual Polish
+  - RTX Pathing
+  - NPU Zero-Shot Labels
+  - Trained Model Readiness
+  - Scenario Portfolio
+  scenario_portfolio:
+  - Route Guard
+  - Convoy Overwatch
+  - Checkpoint Resupply
+  - Downed Drone Recovery
+  - Perimeter Unknowns
+  rtx_pathing_required: true
+  strix_npu_zero_shot_required: true
+  trained_model_ready: true
+  playwright_visual_required: true
+  capitalized_display_copy_required: true
+  object_permanence_required: true
+tasks:
+- name: tac-fuse-alpha-p0-route-guard-c2-proof
+  priority: P0
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Explore and Create.
+
+    Prove the route-guard C2 path first. Audit the current demo and repair any gap where
+    Patrol, Hold, Return, Replan Route, or Abort can update the UI without first writing
+    local mission state, an audit-log entry, and a staged sync record. Offline and Degraded
+    must block external sync; Online may release staged packets only by operator action.
+
+    Keep object detection supporting the C2 loop. Do not make model accuracy or hardware
+    readiness the reason local command authority works.
+
+    Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior or demo workflow changes.
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_local_c2_authority.py tests/test_mission_state.py tests/test_connectivity.py -q
+  metadata:
+    alpha_gate: Route Guard C2
+    workflow_stage: explore
+    local_c2_authority_required: true
+    offline_sync_block_required: true
+    object_permanence_required: true
+- name: tac-fuse-alpha-p0-rtx-pathing-contract
+  priority: P0
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Create.
+
+    Make route pathing consume the same fused contacts and hazard volumes that the operator
+    sees on the 3D Field C2 View. Replan Route should score corridor edges, line of sight,
+    RF-denial volumes, unknown contacts, standoff, battery, and latency. On Strix, use the
+    RTX ray-tracing/CUDA geometry lane for BVH or spatial-query acceleration when available.
+    CPU parity must return the same route-decision shape for deterministic offline tests.
+
+    The UI should describe the operator result, such as Route Replanned or Corridor Blocked,
+    instead of exposing a vague compute label.
+
+    Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior or interface changes.
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_ray_query.py -q && uv run python scripts/check_ray_runtime.py
+  metadata:
+    alpha_gate: RTX Pathing
+    workflow_stage: create
+    rtx_pathing_required: true
+    cpu_parity_required: true
+    strix_hardware_check: uv run python scripts/check_ray_runtime.py --require-rtx
+- name: tac-fuse-alpha-p0-npu-zero-shot-label-contract
+  priority: P0
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Create.
+
+    Keep the current Strix NPU lane as a naive zero-shot labeler for rendered field objects.
+    Alpha, Bravo, Charlie, and Delta should behave as local devices that produce cue metadata
+    when they see wheeled vehicles, small UAS, personnel, RF sources, or obstructions. The
+    zero-shot result is a pseudo-classification by default; it becomes a detection only when
+    the caller explicitly opts into that payload.
+
+    The fusion node must attach cue labels to persistent track IDs and source IDs. The labeler
+    cannot create object permanence by itself.
+
+    Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior or interface changes.
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_zero_shot_vision.py tests/test_npu_siglip.py -q
+  metadata:
+    alpha_gate: NPU Zero-Shot Labels
+    workflow_stage: create
+    strix_npu_zero_shot_required: true
+    pseudo_classification_default_required: true
+    strix_hardware_check: TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
+- name: tac-fuse-alpha-p1-trained-model-ready-boundary
+  priority: P1
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Create and Cleanup.
+
+    Prepare the classifier boundary so a trained model can replace the naive zero-shot
+    labeler without changing local C2, route pathing, sync, or alert contracts. The shared
+    output should include track ID, source ID, frame path, class label, confidence, optional
+    box or mask, device, model ID, and inference latency. Missing model assets must fail
+    clearly in the hardware lane and never block the core route-guard demo.
+
+    Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, or
+    training readiness changes.
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_zero_shot_vision.py tests/test_npu_siglip.py tests/test_npu_trainer_int8.py -q
+  metadata:
+    alpha_gate: Trained Model Readiness
+    workflow_stage: create
+    trained_model_ready: true
+    zero_shot_adapter_boundary_required: true
+- name: tac-fuse-alpha-p1-visual-polish-pass
+  priority: P1
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Beautify.
+
+    Run the Playwright visual path and fix concrete demo defects: text outside boxes,
+    unreadable contact labels, duplicate map stories, wasted panels, scroll traps, tiny
+    telemetry, and controls that are hard to reach. Keep display labels capitalized.
+    The 3D Field C2 View should show decision-grade information first and move extra
+    detail into hover, selection, or evidence panels.
+
+    Update Playwright assertions and contrib/TAC-FUSE/CHANGELOG.md for interface changes.
+  verify_command: cd contrib/TAC-FUSE && node --check web/app.js && npm run test:visual
+  metadata:
+    alpha_gate: Visual Polish
+    workflow_stage: beautify
+    playwright_visual_required: true
+    capitalized_display_copy_required: true
+- name: tac-fuse-alpha-p1-scenario-portfolio
+  priority: P1
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: |
+    Working directory: AlphaHENG repo root.
+    Scope: contrib/TAC-FUSE/
+
+    Stage: Create and Cleanup.
+
+    Keep Route Guard as the judging path, then make the same C2, ray-pathing, cue-label,
+    power, and sync-gate contracts reusable for Convoy Overwatch, Checkpoint Resupply,
+    Downed Drone Recovery, and Perimeter Unknowns. Do not hard-code a single scene. Each
+    scenario should provide plausible ingress or movement paths, stable friendly identities,
+    unknown contacts, and local operator decisions.
+
+    Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for scenario or replay changes.
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_replay.py tests/test_offline_swarm_control.py tests/test_sensor_models.py -q
+  metadata:
+    alpha_gate: Scenario Portfolio
+    workflow_stage: create
+    scenario_portfolio_required: true
+    object_permanence_required: true
