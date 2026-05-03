@@ -1493,7 +1493,7 @@ function drawBase(ctx, width, height) {
   ctx.strokeRect(point.x - 12, point.y - 12, 24, 24);
   ctx.fillStyle = "#f2efe5";
   ctx.font = "12px Inter, Arial";
-  ctx.fillText("Fusion Node", point.x + 16, point.y + 4);
+  drawCanvasLabel(ctx, "Fusion Node", point.x + 16, point.y + 4, width, height);
 }
 
 function drawPath(ctx, feed, width, height) {
@@ -1564,8 +1564,13 @@ function drawAsset(ctx, asset, width, height) {
   drawPlatformGlyph(ctx, x, y, asset, color, selected);
   ctx.fillStyle = "#f2efe5";
   ctx.font = "12px Inter, Arial";
-  ctx.fillText(asset.callsign, x + 12, y + 4);
+  drawCanvasLabel(ctx, asset.callsign, x + 12, y + 4, width, height);
   ctx.restore();
+}
+
+function drawCanvasLabel(ctx, text, x, y, width, height) {
+  const textWidth = ctx.measureText(text).width;
+  ctx.fillText(text, clamp(x, 8, width - textWidth - 8), clamp(y, 14, height - 8));
 }
 
 function drawPlatformGlyph(ctx, x, y, asset, color, selected = false) {
@@ -1629,7 +1634,7 @@ function drawFieldContact(ctx, contact, width, height) {
     drawWheeledVehicleGlyph(ctx, x, y, contact.heading || 0, 0.72);
     ctx.fillStyle = "#f2efe5";
     ctx.font = "11px Inter, Arial";
-    ctx.fillText(contact.callsign, x + 15, y + 4);
+    drawCanvasLabel(ctx, contact.callsign, x + 15, y + 4, width, height);
     ctx.restore();
     return;
   }
@@ -1667,7 +1672,7 @@ function drawFieldContact(ctx, contact, width, height) {
   ctx.stroke();
   ctx.fillStyle = "#f2efe5";
   ctx.font = "11px Inter, Arial";
-  ctx.fillText(contact.callsign, x + 11, y + 4);
+  drawCanvasLabel(ctx, contact.callsign, x + 11, y + 4, width, height);
   ctx.restore();
 }
 

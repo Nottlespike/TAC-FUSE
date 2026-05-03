@@ -373,9 +373,16 @@ body {
 }
 
 .earth-pane {
-    grid-template-rows: auto minmax(360px, 1fr) minmax(190px, 0.38fr);
+    grid-template-rows: auto minmax(0, 1fr);
     background: #11191c;
     gap: 12px;
+}
+
+.earth-pane .swarm-map-shell {
+    align-self: center;
+    justify-self: center;
+    width: min(100%, 76vh);
+    aspect-ratio: 1 / 1;
 }
 
 .operator-pane {
@@ -612,7 +619,7 @@ canvas {
 }
 
 .earth-footer {
-    display: grid;
+    display: none;
     grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
     gap: 12px;
     min-height: 0;
