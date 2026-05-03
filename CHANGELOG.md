@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Durable offline fusion spool (`tac_fuses.fusion_node.spool.FusionSpool`) with append-only event log (SQLite WAL + JSONL side-car), deterministic fused-state snapshots at configurable intervals, sync watermarks per contributor, upload receipt tracking, idempotency keys for reconnect dedup, corruption-tolerant JSONL read path that skips bad records by checksum, and redacted inspection output for operator debugging.
 - Inspection script (`scripts/inspect_fusion_spool.py`) that prints a redacted spool view or JSONL integrity stats from the command line.
 - Test suite for the offline fusion spool (29 tests) covering schema init, WAL mode, event append/idempotency, JSONL health stats, corruption-tolerant reads, snapshot intervals, watermarks, receipt tracking, pending events, replay-to-target, redacted inspection, concurrent reads, and custom timestamps/keys.
+- Test `test_single_operator_swarm_control_offline()` proving the full denied-operations workflow: a single operator tasks 4 drones, retasks mid-mission while offline, issues emergency abort, verifies complete proof chain, exports deterministically from local state, and confirms all sync entries remain pending (enterprise sync blocked until ONLINE).
+- Playwright visual test verifying offline swarm control: commands issue while offline, sync gate holds staged packets, degraded mode transitions correctly, and the operator surface remains functional without connectivity.
 
 ### Changed
 - Standardized the browser demo on capitalized display copy and reframed the

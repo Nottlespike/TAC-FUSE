@@ -27,6 +27,61 @@ async function canvasHash(page, selector) {
   });
 }
 
+test("offline swarm control: commands queue, sync gate holds, degraded works", async ({ page }) => {
+  await page.goto(demoUrl);
+  await page.waitForTimeout(900);
+
+  // Verify initial offline mode — sync gate is "Closed Local"
+  await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
+  await expect(page.locator("#mode-offline")).toHaveClass(/active/);
+  await expect(page.locator("#sync-gate-label")).toContainText("Closed");
+
+  // Issue commands while offline via Local C2 buttons
+  await page.locator("#patrol-area").click();
+  await page.waitForTimeout(200);
+  await page.locator("#hold-position").click();
+  await page.waitForTimeout(200);
+  await page.locator("#return-home").click();
+  await page.waitForTimeout(200);
+
+  // Verify commands staged in sync queue (sync-count should be > 0)
+  const stagedCount = await page.locator("#sync-count").textContent();
+  expect(parseInt(stagedCount)).toBeGreaterThan(0);
+
+  // Sync gate now shows "Held" (offline + spoolDepth > 0)
+  await expect(page.locator("#sync-gate-label")).toContainText("Held");
+
+  // Switch to degraded mode
+  await page.locator("#mode-degraded").click();
+  await expect(page.locator("#mode-status")).toContainText("Local C2 Active");
+  await expect(page.locator("#mode-degraded")).toHaveClass(/active/);
+
+  // Verify commands still work in degraded mode
+  await page.locator("#resume-mission").click();
+  await page.waitForTimeout(200);
+
+  // Sync gate shows "Queued" in degraded mode
+  await expect(page.locator("#sync-gate-label")).toContainText("Queued");
+
+  // Verify more commands queued
+  const stagedCount2 = await page.locator("#sync-count").textContent();
+  expect(parseInt(stagedCount2)).toBeGreaterThanOrEqual(parseInt(stagedCount));
+
+  // Switch to online mode
+  await page.locator("#mode-online").click();
+  await expect(page.locator("#mode-status")).toContainText("Enterprise Sync Enabled");
+  await expect(page.locator("#mode-online")).toHaveClass(/active/);
+
+  // Sync gate opens when online — shows "Releasable" or "Open"
+  const onlineLabel = await page.locator("#sync-gate-label").textContent();
+  expect(onlineLabel).toMatch(/Releasable|Open/);
+
+  await page.screenshot({
+    path: "test-results/tac-fuse-offline-swarm-control.png",
+    fullPage: true,
+  });
+});
+
 test("operator surface is dense and the selected POV is animated", async ({ page }) => {
   await page.goto(demoUrl);
   await page.waitForTimeout(900);

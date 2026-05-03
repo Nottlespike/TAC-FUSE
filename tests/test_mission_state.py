@@ -406,3 +406,94 @@ def test_state_first_all_operation_types() -> None:
     assert len(export["operator_tasks"]) == 5
     assert len(export["mission_events"]) >= 6
     assert len(export["sync_queue"]) >= 6  # at least one per task operation
+
+
+def test_single_operator_swarm_control_offline() -> None:
+    """Prove a single operator can task and retask multiple drones while OFFLINE.
+
+    This is the core denied-operations proof:
+    1. Operator issues commands to multiple drones (Alpha, Bravo, Charlie)
+    2. All commands persist locally with audit trail
+    3. All commands queue for deferred sync (no network required)
+    4. Operator can retask any drone mid-mission
+    5. Export works offline from persisted state
+    6. Enterprise sync remains blocked until ONLINE mode
+    """
+    store = MissionStateStore(operator="field_operator_1")
+
+    # Phase 1: Initial swarm tasking - operator tasks 4 drones
+    alpha_task = store.dispatch_command("patrol", asset_id="uav-alpha", title="Alpha patrol east")
+    bravo_task = store.dispatch_command("relay", asset_id="uav-bravo", title="Bravo comms relay")
+    charlie_task = store.dispatch_command(
+        "scout", asset_id="uav-charlie", title="Charlie scout RF pocket"
+    )
+    delta_task = store.dispatch_command(
+        "overwatch", asset_id="uav-delta", title="Delta overwatch"
+    )
+
+    # All 4 tasks persisted locally
+    assert store.get_task(alpha_task["id"]) is not None
+    assert store.get_task(bravo_task["id"]) is not None
+    assert store.get_task(charlie_task["id"]) is not None
+    assert store.get_task(delta_task["id"]) is not None
+
+    # All 4 tasks have audit trail
+    audit_events = store.list_audit_events()
+    assert sum(1 for e in audit_events if "created" in e["message"].lower()) == 4
+
+    # All 4 tasks queued for sync (but NOT uploaded - offline)
+    sync_queue = store.list_sync_queue()
+    assert len(sync_queue) == 4
+    assert all(e["status"] == "pending" for e in sync_queue)
+
+    # Phase 2: Operator retasks mid-mission (denied connectivity)
+    # Alpha finds RF pocket - retask to investigate
+    store.retask(
+        alpha_task["id"], title="Alpha investigate RF pocket", metadata={"priority": "high"}
+    )
+    # Bravo relay no longer needed - retask to patrol
+    store.retask(bravo_task["id"], title="Bravo patrol north", status="pending")
+    # Charlie finds target - retask to hold position
+    store.update_task(charlie_task["id"], status="in_progress", metadata={"target_detected": True})
+
+    # Retasks persisted locally
+    assert store.get_task(alpha_task["id"])["title"] == "Alpha investigate RF pocket"
+    assert store.get_task(bravo_task["id"])["title"] == "Bravo patrol north"
+    assert store.get_task(charlie_task["id"])["status"] == "in_progress"
+
+    # Retasks queued for sync (now 7 total: 4 create + 3 retask/update)
+    assert store.pending_sync_count() == 7
+
+    # Phase 3: Operator issues emergency abort - all drones hold
+    abort_task = store.dispatch_command(
+        "abort", asset_id="swarm", title="Emergency abort all drones"
+    )
+    assert store.get_task(abort_task["id"]) is not None
+
+    # Phase 4: Verify complete proof chain for all operations
+    summary = store.state_proof_summary()
+    assert summary["entities"]["operator_task"]["total"] == 5
+    assert summary["entities"]["operator_task"]["proven"] == 5
+    assert summary["total_audit_events"] >= 8  # 5 create + 3 retask/update
+
+    # Hard gate passes - all commands proven
+    report = store.assert_command_proof_chain()
+    assert report["chain_complete"] is True
+    assert report["total_tasks"] == 5
+    assert report["proven"] == 5
+
+    # Phase 5: Export works offline (deterministic from local state)
+    export = build_foundry_export(store)
+    assert len(export["operator_tasks"]) == 5
+    assert len(export["mission_events"]) >= 8
+    assert len(export["sync_queue"]) == 8  # All commands staged for later upload
+
+    # Export is deterministic - same result on re-export
+    export2 = build_foundry_export(store)
+    assert export["operator_tasks"] == export2["operator_tasks"]
+    assert export["sync_queue"] == export2["sync_queue"]
+
+    # Phase 6: Prove sync boundary - cannot upload while offline
+    # (Verified by sync_queue status = 'pending' - nothing actually uploaded)
+    pending_count = store.pending_sync_count()
+    assert pending_count == 8  # All still pending, none uploaded

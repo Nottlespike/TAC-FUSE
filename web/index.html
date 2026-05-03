@@ -112,6 +112,10 @@
 
             <div class="right-grid">
                 <section class="panel">
+                    <h2>Swarm C2 — Local Authority</h2>
+                    <div id="swarm-c2" class="swarm-c2"></div>
+                </section>
+                <section class="panel">
                     <h2>Feed Quality</h2>
                     <div id="feed-quality" class="feed-quality"></div>
                 </section>
@@ -135,6 +139,11 @@
                             <span class="metric-label">Battery Level</span>
                             <input type="range" id="battery-slider" min="0" max="100" value="100" title="Adjust laptop battery level" />
                             <span id="battery-slider-pct" class="slider-pct">100%</span>
+                        </div>
+                        <div class="battery-slider-row">
+                            <span class="metric-label">CPU Load</span>
+                            <input type="range" id="cpu-load-slider" min="0" max="100" value="35" title="Adjust simulated CPU load for thermal demonstration" />
+                            <span id="cpu-load-slider-pct" class="slider-pct">35%</span>
                         </div>
                         <div class="posture-metrics">
                             <div class="posture-metric">
@@ -161,11 +170,18 @@
                         </div>
                         <div id="posture-workloads" class="posture-workloads"></div>
                         <div id="posture-notes" class="posture-notes"></div>
+                        <div id="posture-connectivity-guide" class="connectivity-guide"></div>
+                        <div id="posture-latency-budget" class="latency-budget"></div>
+                        <div id="posture-battery-details" class="battery-details"></div>
                     </div>
                 </section>
                 <section class="panel">
                     <h2>Alerts</h2>
                     <div id="alert-list" class="alert-list"></div>
+                </section>
+                <section class="panel wide">
+                    <h2>Denied Operations Proof</h2>
+                    <div id="denied-proof" class="denied-proof"></div>
                 </section>
                 <section class="panel wide">
                     <h2>Operator Sync Gate</h2>
@@ -176,8 +192,8 @@
                     </div>
                 </section>
                 <section class="panel wide">
-                    <h2>Mission Log</h2>
-                    <div id="mission-log" class="mission-log compact-log"></div>
+                    <h2>Command Replay — Mission Timeline</h2>
+                    <div id="mission-log" class="mission-log replay-log"></div>
                 </section>
             </div>
         </section>

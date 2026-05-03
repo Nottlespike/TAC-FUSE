@@ -547,6 +547,46 @@ class PowerPostureManager:
             f"backpack {ba.backpack_output_w:.0f} W"
         )
 
+    def get_cpu_fallback_budget(self) -> dict[str, Any]:
+        """Return the CPU fallback capability budget.
+
+        Lists which workloads can still run when the CPU is the only
+        compute resource (i.e., no GPU/NPU accelerator available).
+        This is the default posture for hardened-laptop deployments.
+        """
+        tier = self.compute_tier()
+        # Under MINIMAL tier, even CPU-fallback workloads are constrained
+        if tier == ComputeTier.MINIMAL:
+            return {
+                "fallback_active": True,
+                "available_cores": 2,
+                "max_workloads": 3,
+                "allowed": ["local_c2", "fusion_spool", "alerting"],
+                "notes": "CPU fallback constrained to minimal tier",
+            }
+        if tier == ComputeTier.REDUCED:
+            return {
+                "fallback_active": True,
+                "available_cores": 4,
+                "max_workloads": 6,
+                "allowed": [
+                    "local_c2",
+                    "sensor_fusion",
+                    "alerting",
+                    "fusion_spool",
+                    "collision_bvh",
+                    "drone_tasking",
+                ],
+                "notes": "CPU fallback active; heavy batch workloads paused",
+            }
+        return {
+            "fallback_active": True,
+            "available_cores": 8,
+            "max_workloads": len(WORKLOAD_REGISTRY),
+            "allowed": list(WORKLOAD_REGISTRY.keys()),
+            "notes": "CPU fallback: full workload capacity available",
+        }
+
     def get_runbook_summary(self) -> str:
         """Generate a runbook-visible text summary of the current posture."""
         posture = self.get_posture()

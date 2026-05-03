@@ -909,6 +909,164 @@ canvas {
     color: var(--warn);
 }
 
+#cpu-load-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 999px;
+    background: #2d3940;
+    outline: none;
+    cursor: pointer;
+}
+
+#cpu-load-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--blue);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(121, 184, 255, 0.5);
+}
+
+#cpu-load-slider.warm {
+    background: linear-gradient(to right, #3b3218, #2d3940);
+}
+
+#cpu-load-slider.warm::-webkit-slider-thumb {
+    background: var(--warn);
+    box-shadow: 0 0 6px rgba(230, 195, 92, 0.5);
+}
+
+#cpu-load-slider.hot {
+    background: linear-gradient(to right, #321b1e, #2d3940);
+}
+
+#cpu-load-slider.hot::-webkit-slider-thumb {
+    background: var(--danger);
+    box-shadow: 0 0 6px rgba(255, 93, 93, 0.5);
+}
+
+.slider-pct.warm {
+    color: var(--warn);
+}
+
+.slider-pct.hot {
+    color: var(--danger);
+}
+
+/* Posture detail sections */
+
+.connectivity-guide,
+.latency-budget,
+.battery-details {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-2);
+    padding: 10px;
+    margin-top: 4px;
+}
+
+.connectivity-guide h3,
+.latency-budget h3,
+.battery-details h3 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+}
+
+.guide-safe,
+.guide-restricted {
+    margin-bottom: 8px;
+}
+
+.guide-safe .workload-tag {
+    background: #17382b;
+    color: var(--accent);
+    border-color: #2a6e57;
+}
+
+.guide-restricted .workload-tag {
+    background: #321b1e;
+    color: var(--danger);
+    border-color: #784247;
+    opacity: 0.7;
+    text-decoration: line-through;
+}
+
+.guide-rationale {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 3px 0 0 24px;
+}
+
+.guide-actions {
+    list-style: none;
+    padding: 0;
+    margin: 4px 0 0 0;
+}
+
+.guide-actions li {
+    font-size: 11px;
+    color: var(--text);
+    padding: 2px 0;
+    padding-left: 14px;
+    position: relative;
+}
+
+.guide-actions li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+}
+
+.budget-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.budget-row .budget-label {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.budget-row .budget-value {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.budget-over {
+    color: var(--danger);
+    font-weight: 600;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+.battery-details table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+
+.battery-details td {
+    padding: 3px 0;
+}
+
+.battery-details td:first-child {
+    color: var(--muted);
+}
+
+.battery-details td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 1200px) {
     body {
         overflow: auto;

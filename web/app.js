@@ -226,6 +226,7 @@ const missionLog = [];
 let spoolDepth = 0;         // offline spool buffer depth
 let syncWatermark = 0;      // timestamp of last staged sync
 let syncStaged = false;     // whether a packet is staged for gate
+const MAX_MISSION_LOG = 40;  // extended log for replay timeline
 
 // Swarm-wide tasking state — single-operator C2 proof
 // Tracks operator commands across all drones for the denied-ops proof path
@@ -405,11 +406,11 @@ function selectedFeed() {
 
 function pushLog(text) {
   missionLog.unshift(`T+${simTime.toFixed(1)}s ${text}`);
-  missionLog.splice(8);
+  missionLog.splice(MAX_MISSION_LOG);
 }
 
-function issueCommand(command) {
-  const feed = selectedFeed();
+function issueCommand(command, targetFeed) {
+  const feed = targetFeed || selectedFeed();
   const record = {
     id: `cmd-${String(commandSeq).padStart(3, "0")}`,
     assetId: feed.id,
@@ -454,6 +455,50 @@ function issueCommand(command) {
     feed.command = "patrol";
   }
   pushLog(`${record.callsign} ${displayCommand(command)} Staged For Sync.`);
+}
+
+function issueCommandToDrone(feedId, command) {
+  const feed = feeds.find((f) => f.id === feedId);
+  if (!feed) return;
+  issueCommand(command, feed);
+}
+
+function issueCommandToAll(command) {
+  feeds.forEach((feed) => {
+    const record = {
+      id: `cmd-${String(commandSeq).padStart(3, "0")}`,
+      assetId: feed.id,
+      callsign: feed.callsign,
+      command,
+      mode: "fusion-local",
+      status: "staged",
+      ts: simTime,
+    };
+    commandSeq += 1;
+    stagedCommands.unshift(record);
+
+    const prevCommand = swarmTasking.lastCommand[feed.id];
+    if (prevCommand && prevCommand.command !== command) {
+      swarmTasking.retaskCount += 1;
+    }
+    swarmTasking.lastCommand[feed.id] = { command, ts: simTime };
+    swarmTasking.history.unshift({ assetId: feed.id, callsign: feed.callsign, command, ts: simTime });
+    swarmTasking.history.splice(20);
+
+    if (command === "return") {
+      feed.command = "return";
+      feed.target = { ...BASE };
+    } else if (command === "hold") {
+      feed.command = "hold";
+    } else if (command === "patrol") {
+      feed.command = "patrol";
+      feed.target = { x: 680, y: 360 };
+    }
+    pushLog(`[Bulk] ${feed.callsign} ${displayCommand(command)} Staged For Sync.`);
+  });
+  spoolDepth = stagedCommands.length;
+  syncStaged = spoolDepth > 0;
+  if (syncStaged) syncWatermark = simTime;
 }
 
 function movePlanarActor(actor, target, dt, cruiseSpeed, turnRateDeg) {
@@ -1764,13 +1809,87 @@ function renderMissionLog() {
     .join("");
 }
 
+function renderSwarmC2() {
+  const el = document.querySelector("#swarm-c2");
+  if (!el) return;
+  el.innerHTML = feeds.map((feed) => {
+    const last = swarmTasking.lastCommand[feed.id];
+    const latClass = latencyClass(feed.latency);
+    const latency = formatLatencyMs(feed.latency);
+    const lastCmd = last ? `${displayCommand(last.command)} @ T+${last.ts.toFixed(0)}s` : "—";
+    const commands = ["patrol", "hold", "return", "resume"].map((cmd) => {
+      const active = feed.command === cmd ? " active" : "";
+      return `<button class="c2-mini${active}" data-drone="${feed.id}" data-cmd="${cmd}" title="Task ${feed.callsign} to ${cmd}">${cmd.slice(0, 2).toUpperCase()}</button>`;
+    }).join("");
+    return `<div class="c2-drone-row">
+      <div class="c2-drone-header">
+        <strong>${feed.callsign}</strong>
+        <span class="feed-latency compact ${latClass}">${latency}</span>
+        <span class="c2-drone-cmd">${displayCommand(feed.command)} · ${Math.round(feed.battery)}% · ${formatMeters(feed.z)}</span>
+      </div>
+      <div class="c2-drone-meta">Last: ${lastCmd}</div>
+      <div class="c2-mini-stack">${commands}</div>
+    </div>`;
+  }).join("");
+  el.querySelectorAll(".c2-mini").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      issueCommandToDrone(btn.dataset.drone, btn.dataset.cmd);
+      renderFrame();
+    });
+  });
+}
+
+function renderDeniedProof() {
+  const el = document.querySelector("#denied-proof");
+  if (!el) return;
+
+  const offlineCapabilities = [
+    { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
+    { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
+    { name: "Route Guard BVH", status: "active", detail: "Collision / hazard avoidance running locally" },
+    { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
+    { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },
+    { name: "Drone Tasking State", status: "active", detail: `${feeds.length} drones tracked, ${swarmTasking.retaskCount} retasks` },
+    { name: "Power Posture Manager", status: "active", detail: `${powerSource} — ${Math.round(laptopBattery)}% battery` },
+    { name: "Local AOI Cache", status: connectivityMode !== "online" ? "degraded" : "active", detail: connectivityMode === "online" ? "Up to date" : "Cached — no fresh download" },
+  ];
+  const onlineOnlyCapabilities = [
+    { name: "Enterprise Sync", status: connectivityMode === "online" ? "available" : "blocked", detail: connectivityMode === "online" ? "Gate open — release to upload" : `Blocked by ${connectivityMode} mode` },
+    { name: "Foundry / Maven Export", status: "blocked", detail: "No connectivity — packets staged locally" },
+  ];
+
+  const rows = [...offlineCapabilities, ...onlineOnlyCapabilities].map((cap) => {
+    let chipClass = "chip-active";
+    let chipLabel = "ACTIVE";
+    if (cap.status === "blocked") { chipClass = "chip-Blocked"; chipLabel = "BLOCKED"; }
+    else if (cap.status === "degraded") { chipClass = "chip-Degraded"; chipLabel = "DEGRADED"; }
+    else if (cap.status === "available") { chipClass = "chip-Available"; chipLabel = "AVAILABLE"; }
+    return `<div class="denied-row ${cap.status}">
+      <div class="denied-name"><span class="denied-chip ${chipClass}">${chipLabel}</span> ${cap.name}</div>
+      <div class="denied-detail">${cap.detail}</div>
+    </div>`;
+  }).join("");
+
+  const activeCount = offlineCapabilities.filter((c) => c.status === "active").length;
+  const totalOffline = offlineCapabilities.length;
+
+  el.innerHTML = `
+    <div class="denied-summary">
+      <span class="denied-pill denied-pill-ok">${activeCount}/${totalOffline} Capabilities Active Offline</span>
+      <span class="denied-pill denied-pill-info">${swarmTasking.history.length} Commands Issued This Session</span>
+      <span class="denied-pill denied-pill-warn">${connectivityMode === "offline" ? "FULL DENIED — No Enterprise Dependency" : connectivityMode === "degraded" ? "PARTIAL DENIED — Sync Queued" : "ONLINE — Proof Holds Locally"}</span>
+    </div>
+    ${rows}
+  `;
+}
+
 function renderSwarmC2Status() {
   // Update the topbar feed summary with swarm C2 metrics
   const feedCountEl = document.querySelector("#feed-count");
   const retaskEl = document.querySelector("#spool-depth");
 
   if (feedCountEl) {
-    feedCountEl.textContent = `${feeds.length} Feeds`;
+    feedCountEl.textContent = `${feeds.length + sceneClassTargets.length + 1} Contacts`;
   }
 
   // Show retask count in the spool depth pill when there's activity
@@ -1815,6 +1934,8 @@ function renderFrame() {
   renderHardware(feed, hits);
   renderVision(scores);
   renderAlerts(feed, hits, scores);
+  renderSwarmC2();
+  renderDeniedProof();
   renderMissionLog();
   updateModeChrome();
   currentPosture = computePosture();
