@@ -267,7 +267,7 @@ const sceneClassTargets = [
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
-let rayPath = "cuda";
+let rayPath = "cpu";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -450,6 +450,10 @@ function displayTier(tier) {
   return labels[tier] || tier;
 }
 
+function geometryBackendLabel() {
+  return rayPath === "cuda" ? "CUDA/RTX" : "CPU BVH";
+}
+
 earthImagery.image.onload = () => {
   earthImagery.ready = true;
 };
@@ -517,11 +521,13 @@ function issueCommand(command, targetFeed) {
   if (command === "return") {
     feed.command = "return";
     feed.target = { ...BASE };
+    feed.station = null;
   } else if (command === "hold") {
     feed.command = "hold";
   } else if (command === "patrol") {
     feed.command = "patrol";
-    feed.target = { x: 680, y: 360 };
+    feed.station = { x: 680, y: 360 };
+    feed.target = { ...feed.station };
   } else if (command === "abort") {
     feeds.forEach((item) => {
       item.command = "hold";
@@ -563,11 +569,13 @@ function issueCommandToAll(command) {
     if (command === "return") {
       feed.command = "return";
       feed.target = { ...BASE };
+      feed.station = null;
     } else if (command === "hold") {
       feed.command = "hold";
     } else if (command === "patrol") {
       feed.command = "patrol";
-      feed.target = { x: 680, y: 360 };
+      feed.station = { x: 680, y: 360 };
+      feed.target = { ...feed.station };
     }
     pushLog(`[Bulk] ${feed.callsign} ${displayCommand(command)} Staged For Sync.`);
   });
@@ -694,11 +702,12 @@ function stepSimulation(dt) {
 
     if (feed.command === "patrol" || feed.command === "relay" || feed.command === "overwatch" || feed.command === "scout") {
       feed.orbitPhase += dt * 0.22;
-      const center = feed.target;
+      if (!feed.station) feed.station = { ...feed.target };
+      const center = feed.station;
       const radius = feed.command === "relay" ? 230 : feed.command === "overwatch" ? 150 : feed.command === "scout" ? 95 : 180;
       feed.target = {
-        x: center.x + Math.cos(feed.orbitPhase) * radius * 0.012,
-        y: center.y + Math.sin(feed.orbitPhase) * radius * 0.012,
+        x: clamp(center.x + Math.cos(feed.orbitPhase) * radius, 70, WORLD_M - 70),
+        y: clamp(center.y + Math.sin(feed.orbitPhase) * radius * 0.72, 70, WORLD_M - 70),
       };
     }
 
@@ -1143,8 +1152,38 @@ function resizeCanvas(canvas) {
   canvas.height = Math.max(340, Math.floor(bounds.height));
 }
 
+function worldViewport(width, height) {
+  const scale = Math.min(width, height) / WORLD_M;
+  const size = WORLD_M * scale;
+  return {
+    scale,
+    size,
+    x: (width - size) / 2,
+    y: (height - size) / 2,
+  };
+}
+
 function worldToCanvas(asset, width, height) {
-  return { x: (asset.x / WORLD_M) * width, y: (asset.y / WORLD_M) * height };
+  const viewport = worldViewport(width, height);
+  return {
+    x: viewport.x + asset.x * viewport.scale,
+    y: viewport.y + asset.y * viewport.scale,
+  };
+}
+
+function worldMetersToCanvas(meters, width, height) {
+  return meters * worldViewport(width, height).scale;
+}
+
+function worldRectToCanvas(rect, width, height) {
+  const viewport = worldViewport(width, height);
+  const origin = worldToCanvas(rect, width, height);
+  return {
+    x: origin.x,
+    y: origin.y,
+    w: rect.w * viewport.scale,
+    h: rect.h * viewport.scale,
+  };
 }
 
 function terrainHeightAt(x, y) {
@@ -1189,35 +1228,40 @@ function drawProceduralTerrain(ctx, width, height) {
 }
 
 function drawLocalGrid(ctx, width, height) {
+  const viewport = worldViewport(width, height);
+  const left = viewport.x;
+  const right = viewport.x + viewport.size;
+  const top = viewport.y;
+  const bottom = viewport.y + viewport.size;
   ctx.save();
   ctx.strokeStyle = "rgba(245,241,232,0.08)";
   ctx.lineWidth = 1;
   for (let meters = 0; meters <= WORLD_M; meters += 150) {
-    const x = (meters / WORLD_M) * width;
-    const y = (meters / WORLD_M) * height;
+    const x = worldToCanvas({ x: meters, y: 0 }, width, height).x;
+    const y = worldToCanvas({ x: 0, y: meters }, width, height).y;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
     ctx.stroke();
   }
 
   ctx.strokeStyle = "rgba(85,214,166,0.28)";
   ctx.lineWidth = 1.4;
   for (let meters = 0; meters <= WORLD_M; meters += 300) {
-    const x = (meters / WORLD_M) * width;
-    const y = (meters / WORLD_M) * height;
+    const x = worldToCanvas({ x: meters, y: 0 }, width, height).x;
+    const y = worldToCanvas({ x: 0, y: meters }, width, height).y;
     ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.moveTo(left, y);
+    ctx.lineTo(right, y);
     ctx.stroke();
   }
   ctx.fillStyle = "rgba(245,241,232,0.68)";
   ctx.font = "11px Inter, Arial";
-  ctx.fillText("Local Meters", 16, height - 18);
+  ctx.fillText("Local Meters", left + 16, bottom - 18);
   ctx.restore();
 }
 
@@ -1281,10 +1325,11 @@ function drawTerrainMesh(ctx, width, height) {
 }
 
 function drawScaleBar(ctx, width, height) {
+  const viewport = worldViewport(width, height);
   const scaleM = 300;
-  const barW = (scaleM / WORLD_M) * width;
-  const x = width - barW - 28;
-  const y = height - 28;
+  const barW = worldMetersToCanvas(scaleM, width, height);
+  const x = viewport.x + viewport.size - barW - 28;
+  const y = viewport.y + viewport.size - 28;
   ctx.save();
   ctx.strokeStyle = "rgba(245,241,232,0.82)";
   ctx.fillStyle = "rgba(8,13,15,0.72)";
@@ -1328,9 +1373,16 @@ function drawRoadNetwork(ctx, width, height) {
   ctx.strokeStyle = "rgba(245,241,232,0.26)";
   ctx.lineWidth = 1.4;
   ctx.beginPath();
-  ctx.moveTo(width * 0.18, height * 0.94);
-  ctx.lineTo(width * 0.36, height * 0.66);
-  ctx.lineTo(width * 0.58, height * 0.56);
+  drawWorldPath(
+    ctx,
+    [
+      { x: 215, y: 1128 },
+      { x: 435, y: 792 },
+      { x: 696, y: 672 },
+    ],
+    width,
+    height,
+  );
   ctx.stroke();
 }
 
@@ -1355,7 +1407,7 @@ function drawWorldPath(ctx, points, width, height) {
 }
 
 function drawRouteGuardCorridor2D(ctx, width, height) {
-  const corridorPx = (ROUTE_GUARD_HALF_WIDTH_M * 2 / WORLD_M) * Math.min(width, height);
+  const corridorPx = worldMetersToCanvas(ROUTE_GUARD_HALF_WIDTH_M * 2, width, height);
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
@@ -1408,13 +1460,15 @@ function drawSwarmMap() {
   drawRouteGuardCorridor2D(ctx, width, height);
 
   for (const node of buildBvhNodes()) {
+    const rect = worldRectToCanvas(node, width, height);
     ctx.strokeStyle = node.severity === "critical" ? "rgba(255, 93, 93, 0.42)" : "rgba(230, 195, 92, 0.35)";
     ctx.lineWidth = 1;
-    ctx.strokeRect((node.x / WORLD_M) * width, (node.y / WORLD_M) * height, (node.w / WORLD_M) * width, (node.h / WORLD_M) * height);
+    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
   }
 
   for (const hazard of hazards) {
-    drawZone(ctx, (hazard.x / WORLD_M) * width, (hazard.y / WORLD_M) * height, (hazard.r / WORLD_M) * width, hazard.severity === "critical" ? "#6d3238" : "#65551f", hazard.label);
+    const point = worldToCanvas(hazard, width, height);
+    drawZone(ctx, point.x, point.y, worldMetersToCanvas(hazard.r, width, height), hazard.severity === "critical" ? "#6d3238" : "#65551f", hazard.label);
   }
 
   drawBase(ctx, width, height);
@@ -2283,8 +2337,8 @@ function renderHardware(feed, hits) {
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${rayPath.toUpperCase()}`, criticalHit ? "Watch" : "Good"],
-    ["CUDA/RTX Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${rayPath.toUpperCase()}`, "Good"],
+    ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
+    ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
@@ -2418,7 +2472,7 @@ function renderDeniedProof() {
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
-    { name: "Automatic Corridor Guard", status: "active", detail: `${rayPath.toUpperCase()} BVH checks route hazards continuously` },
+    { name: "Automatic Corridor Guard", status: "active", detail: `${geometryBackendLabel()} checks route hazards continuously` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },

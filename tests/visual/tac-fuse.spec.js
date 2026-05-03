@@ -95,6 +95,19 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await page.locator('[data-view="overview"]').click();
   await expect(page.locator(".earth-pane")).toBeVisible();
   await expect(page.locator(".operator-pane")).toBeHidden();
+  const overviewScale = await page.evaluate(() => {
+    const topLeft = worldToCanvas({ x: 0, y: 0 }, 1600, 500);
+    const bottomRight = worldToCanvas({ x: 1200, y: 1200 }, 1600, 500);
+    return {
+      widthPx: bottomRight.x - topLeft.x,
+      heightPx: bottomRight.y - topLeft.y,
+      leftMargin: topLeft.x,
+      rightMargin: 1600 - bottomRight.x,
+    };
+  });
+  expect(Math.abs(overviewScale.widthPx - overviewScale.heightPx)).toBeLessThan(1);
+  expect(Math.abs(overviewScale.leftMargin - overviewScale.rightMargin)).toBeLessThan(1);
+  expect(overviewScale.leftMargin).toBeGreaterThan(300);
   await page.locator('[data-view="field"]').click();
   await expect(page.locator(".operator-pane")).toBeVisible();
   await expect(page.locator(".earth-pane")).toBeHidden();

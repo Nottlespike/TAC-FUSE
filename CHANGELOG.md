@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced generic friendly-node circles with platform-specific glyphs and gave
   scout-tasked drones an on-station movement pattern so a hovering platform
   reads as intentional field behavior.
+- Corrected the Overview map projection to preserve 1.2 km x 1.2 km local scale
+  inside wide canvases, and changed patrol/relay/scout movement to orbit fixed
+  guard stations instead of drifting toward canvas corners.
+- Reframed the static browser geometry label as CPU BVH parity unless a live
+  Strix backend selects CUDA/RTX, avoiding a false claim that the standalone UI
+  is directly driving ray-tracing cores.
 - Added shared friendly identity handling in the field view so Alpha, Bravo,
   Charlie, Delta, and Team 1 remain known friendly tracks across edge-node
   perspectives instead of being reclassified as unknown detector objects.
