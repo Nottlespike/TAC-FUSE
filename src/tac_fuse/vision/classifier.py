@@ -421,8 +421,10 @@ class PackagedSigLIP2Classifier(BaseClassifier):
     def _dependency_status(self) -> dict[str, bool]:
         return {
             "PIL": importlib.util.find_spec("PIL") is not None,
+            "google.protobuf": importlib.util.find_spec("google.protobuf") is not None,
             "sentencepiece": importlib.util.find_spec("sentencepiece") is not None,
             "torch": importlib.util.find_spec("torch") is not None,
+            "torchvision": importlib.util.find_spec("torchvision") is not None,
             "transformers": importlib.util.find_spec("transformers") is not None,
         }
 
@@ -478,7 +480,7 @@ class PackagedSigLIP2Classifier(BaseClassifier):
         processor = AutoProcessor.from_pretrained(
             str(self.model_dir / "processor"),
             local_files_only=True,
-            use_fast=False,
+            use_fast=True,
         )
         backbone = AutoModel.from_pretrained(
             str(self.model_dir / "backbone"),

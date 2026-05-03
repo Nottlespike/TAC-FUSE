@@ -458,8 +458,10 @@ class TestPackagedSigLIP2Classifier:
             "_dependency_status",
             lambda self: {
                 "PIL": True,
+                "google.protobuf": True,
                 "sentencepiece": True,
                 "torch": True,
+                "torchvision": True,
                 "transformers": True,
             },
         )
@@ -485,8 +487,10 @@ class TestPackagedSigLIP2Classifier:
             "_dependency_status",
             lambda self: {
                 "PIL": True,
+                "google.protobuf": True,
                 "sentencepiece": True,
                 "torch": True,
+                "torchvision": True,
                 "transformers": True,
             },
         )
