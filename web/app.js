@@ -2160,6 +2160,9 @@ function rectsOverlap(a, b) {
 function placeDetectionLabel(obj, width, height, placedRects) {
   const labelW = 228;
   const labelH = 88;
+  const minLabelY = Math.min(height - labelH - 10, Math.max(160, height * 0.38));
+  const maxLabelY = height - labelH - 10;
+  const maxLabelX = width - labelW - 10;
   const candidates = [
     { x: obj.air.x + 16, y: obj.air.y - 14 },
     { x: obj.air.x + 16, y: obj.air.y + 18 },
@@ -2167,15 +2170,56 @@ function placeDetectionLabel(obj, width, height, placedRects) {
     { x: obj.air.x - labelW - 16, y: obj.air.y + 18 },
     { x: obj.air.x - labelW / 2, y: obj.air.y - labelH - 18 },
   ].map((candidate) => ({
-    x: clamp(candidate.x, 10, width - labelW - 10),
-    y: clamp(candidate.y, 28, height - labelH - 10),
+    x: clamp(candidate.x, 10, maxLabelX),
+    y: clamp(candidate.y, minLabelY, maxLabelY),
     w: labelW,
     h: labelH,
   }));
 
-  const rect = candidates.find(
+  let rect = candidates.find(
     (candidate) => placedRects.every((placed) => !rectsOverlap(candidate, placed)),
-  ) || candidates[0];
+  );
+  if (!rect) {
+    const nudge = labelH + 8;
+    const shiftedCandidates = [];
+    for (const candidate of candidates) {
+      for (let step = 1; step <= 5; step += 1) {
+        for (const direction of [1, -1]) {
+          shiftedCandidates.push({
+            ...candidate,
+            y: clamp(candidate.y + direction * step * nudge, minLabelY, maxLabelY),
+          });
+        }
+      }
+    }
+    rect = shiftedCandidates.find(
+      (candidate) => placedRects.every((placed) => !rectsOverlap(candidate, placed)),
+    );
+  }
+  if (!rect) {
+    const railCandidates = [];
+    const xSlots = [
+      clamp(obj.air.x - labelW / 2, 10, maxLabelX),
+      clamp(obj.air.x + 84, 10, maxLabelX),
+      clamp(obj.air.x - labelW - 84, 10, maxLabelX),
+      10,
+      maxLabelX,
+    ];
+    for (const x of [...new Set(xSlots.map((value) => Math.round(value)))]) {
+      for (let y = minLabelY; y <= maxLabelY; y += labelH + 8) {
+        railCandidates.push({ x, y, w: labelW, h: labelH });
+      }
+    }
+    railCandidates.sort((a, b) => {
+      const distanceA = Math.hypot(a.x + labelW / 2 - obj.air.x, a.y + labelH / 2 - obj.air.y);
+      const distanceB = Math.hypot(b.x + labelW / 2 - obj.air.x, b.y + labelH / 2 - obj.air.y);
+      return distanceA - distanceB;
+    });
+    rect = railCandidates.find(
+      (candidate) => placedRects.every((placed) => !rectsOverlap(candidate, placed)),
+    );
+  }
+  if (!rect) rect = candidates[0];
   placedRects.push(rect);
   return rect;
 }

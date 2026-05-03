@@ -127,6 +127,34 @@ test("operator surface is dense and the selected POV is animated", async ({ page
       .map((label) => label.textContent?.trim()),
   );
   expect(overflowingLabels).toEqual([]);
+  const overlappingLabels = await page.locator(".target-label").evaluateAll((labels) => {
+    const rects = labels.map((label) => {
+      const rect = label.getBoundingClientRect();
+      return { text: label.textContent?.trim(), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+    });
+    const overlaps = [];
+    for (let i = 0; i < rects.length; i += 1) {
+      for (let j = i + 1; j < rects.length; j += 1) {
+        const a = rects[i];
+        const b = rects[j];
+        const separated = a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+        if (!separated) overlaps.push(`${a.text} / ${b.text}`);
+      }
+    }
+    return overlaps;
+  });
+  expect(overlappingLabels).toEqual([]);
+  const evidenceOverlap = await page.evaluate(() => {
+    const evidence = document.querySelector("#mission-evidence")?.getBoundingClientRect();
+    if (!evidence) return [];
+    return Array.from(document.querySelectorAll(".target-label"))
+      .filter((label) => {
+        const rect = label.getBoundingClientRect();
+        return !(rect.right <= evidence.left || evidence.right <= rect.left || rect.bottom <= evidence.top || evidence.bottom <= rect.top);
+      })
+      .map((label) => label.textContent?.trim());
+  });
+  expect(evidenceOverlap).toEqual([]);
 
   await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());
   await page.waitForTimeout(300);
