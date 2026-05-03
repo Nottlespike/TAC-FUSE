@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "TAC-FUSE contributors" }]
-dependencies = ["pydantic>=2.10"]
+dependencies = ["pydantic>=2.10", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.3", "ruff>=0.8"]

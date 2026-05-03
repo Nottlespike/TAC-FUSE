@@ -13,11 +13,11 @@
             <span id="mode-status" class="mode-pill offline">OFFLINE FIELD NODE</span>
         </div>
         <div class="capability-strip" aria-label="Local capability summary">
-            <span>Local C2</span>
-            <span>RTX BVH</span>
-            <span>Intel NPU</span>
-            <span>SQLite</span>
-            <span>Foundry export</span>
+            <span>Laptop fusion node</span>
+            <span>Earth imagery cache</span>
+            <span>Drone feeds</span>
+            <span>On-site state</span>
+            <span>Maven sync gated</span>
         </div>
         <div class="top-metrics">
             <span><strong id="sync-count">0</strong> staged</span>
@@ -31,7 +31,7 @@
             <div class="section-heading">
                 <div>
                     <h1>Offline Theater</h1>
-                    <span class="subtle">Local laptop authority, simulated terrain, no cloud dependency</span>
+                    <span class="subtle">Local laptop authority with cached Earth imagery and drone replay</span>
                 </div>
                 <span id="swarm-count" class="subtle">5 assets</span>
             </div>
@@ -39,10 +39,10 @@
             <div class="swarm-map-shell">
                 <canvas id="swarm-map" class="earth-canvas" width="980" height="680"></canvas>
                 <div class="map-hud">
-                    <strong>LOCAL BVH</strong>
-                    <span id="map-hud-copy">RTX ray cores staged, CPU parity active</span>
+                    <strong>EARTH IMAGERY</strong>
+                    <span id="map-hud-copy">Awaiting cached raster</span>
                 </div>
-                <div class="map-badge" id="bvh-badge">RTX BVH local</div>
+                <div class="map-badge" id="bvh-badge">Earth imagery pending</div>
             </div>
 
             <div class="earth-footer">
@@ -93,14 +93,14 @@
                     </div>
                     <div>
                         <span class="metric-label">BVH</span>
-                        <strong id="bvh-label">CPU parity</strong>
+                        <strong id="bvh-label">Geometry</strong>
                     </div>
                     <div>
                         <span class="metric-label">Vision</span>
                         <strong id="field-condition-label">Clear corridor</strong>
                     </div>
                     <div>
-                        <span class="metric-label">NPU</span>
+                        <span class="metric-label">Fusion</span>
                         <strong id="npu-label">Local</strong>
                     </div>
                 </div>
@@ -108,11 +108,11 @@
 
             <div class="right-grid">
                 <section class="panel">
-                    <h2>Offline Stack</h2>
+                    <h2>Mission State</h2>
                     <div class="state-explainer">
                         <div><strong>C2</strong><span>Operator commands apply locally.</span></div>
-                        <div><strong>BVH</strong><span>Ray queries stay on laptop hardware.</span></div>
-                        <div><strong>Export</strong><span>Foundry bundle waits for reconnect.</span></div>
+                        <div><strong>Map</strong><span>Cached Earth imagery backs the theater view.</span></div>
+                        <div><strong>Sync</strong><span>Maven packet waits for reconnect.</span></div>
                     </div>
                 </section>
                 <section class="panel">

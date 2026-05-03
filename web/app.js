@@ -8,6 +8,13 @@ const colors = {
   team: "#d8e0dc",
 };
 
+const earthImagery = {
+  src: "../assets/visual/earth/blue_marble_january_5400.jpg",
+  image: new Image(),
+  ready: false,
+  failed: false,
+};
+
 const hazards = [
   { id: "rf-denial-east", label: "RF denial", x: 610, y: 360, r: 105, severity: "critical" },
   { id: "return-corridor", label: "return corridor", x: 330, y: 790, r: 95, severity: "watch" },
@@ -106,6 +113,14 @@ const swarmCtx = swarmCanvas.getContext("2d");
 const povCanvas = document.querySelector("#pov-canvas");
 const povCtx = povCanvas.getContext("2d");
 const overlay = document.querySelector("#pov-overlay");
+
+earthImagery.image.onload = () => {
+  earthImagery.ready = true;
+};
+earthImagery.image.onerror = () => {
+  earthImagery.failed = true;
+};
+earthImagery.image.src = earthImagery.src;
 
 function allAssets() {
   return [...drones, groundTeam];
@@ -224,8 +239,8 @@ function buildBvhNodes() {
 function modeCopy() {
   return {
     sync: commandQueue.length,
-    foundry: "Foundry export staged",
-    npu: "Intel NPU local",
+    foundry: "Maven packet staged",
+    npu: "feeds fused locally",
   };
 }
 
@@ -288,6 +303,22 @@ function worldToCanvas(asset, width, height) {
 }
 
 function drawTerrainBackdrop(ctx, width, height) {
+  if (earthImagery.ready) {
+    drawImageCover(ctx, earthImagery.image, width, height);
+    const shade = ctx.createLinearGradient(0, 0, width, height);
+    shade.addColorStop(0, "rgba(6, 12, 14, 0.18)");
+    shade.addColorStop(0.55, "rgba(19, 38, 31, 0.46)");
+    shade.addColorStop(1, "rgba(5, 8, 9, 0.72)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, width, height);
+  } else {
+    drawProceduralTerrain(ctx, width, height);
+  }
+
+  drawContourOverlay(ctx, width, height);
+}
+
+function drawProceduralTerrain(ctx, width, height) {
   const terrain = ctx.createLinearGradient(0, 0, width, height);
   terrain.addColorStop(0, "#1c2a2a");
   terrain.addColorStop(0.34, "#273424");
@@ -296,6 +327,21 @@ function drawTerrainBackdrop(ctx, width, height) {
   ctx.fillStyle = terrain;
   ctx.fillRect(0, 0, width, height);
 
+  ctx.fillStyle = "rgba(121,184,255,0.06)";
+  ctx.beginPath();
+  ctx.moveTo(width * 0.08, height * 0.88);
+  ctx.bezierCurveTo(width * 0.22, height * 0.68, width * 0.34, height * 0.62, width * 0.48, height * 0.44);
+  ctx.bezierCurveTo(width * 0.62, height * 0.26, width * 0.78, height * 0.18, width * 0.94, height * 0.08);
+  ctx.lineTo(width, height * 0.16);
+  ctx.bezierCurveTo(width * 0.8, height * 0.3, width * 0.65, height * 0.38, width * 0.5, height * 0.58);
+  ctx.bezierCurveTo(width * 0.35, height * 0.78, width * 0.2, height * 0.86, width * 0.08, height);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawContourOverlay(ctx, width, height) {
+  ctx.save();
+  ctx.globalAlpha = earthImagery.ready ? 0.42 : 1;
   for (let band = 0; band < 12; band += 1) {
     const y = height * (0.12 + band * 0.075);
     ctx.strokeStyle = band % 3 === 0 ? "rgba(230,195,92,0.16)" : "rgba(245,241,232,0.08)";
@@ -309,17 +355,26 @@ function drawTerrainBackdrop(ctx, width, height) {
     }
     ctx.stroke();
   }
+  ctx.restore();
+}
 
-  ctx.fillStyle = "rgba(121,184,255,0.06)";
-  ctx.beginPath();
-  ctx.moveTo(width * 0.08, height * 0.88);
-  ctx.bezierCurveTo(width * 0.22, height * 0.68, width * 0.34, height * 0.62, width * 0.48, height * 0.44);
-  ctx.bezierCurveTo(width * 0.62, height * 0.26, width * 0.78, height * 0.18, width * 0.94, height * 0.08);
-  ctx.lineTo(width, height * 0.16);
-  ctx.bezierCurveTo(width * 0.8, height * 0.3, width * 0.65, height * 0.38, width * 0.5, height * 0.58);
-  ctx.bezierCurveTo(width * 0.35, height * 0.78, width * 0.2, height * 0.86, width * 0.08, height);
-  ctx.closePath();
-  ctx.fill();
+function drawImageCover(ctx, image, width, height) {
+  const imageRatio = image.naturalWidth / image.naturalHeight;
+  const canvasRatio = width / height;
+  let sx = 0;
+  let sy = 0;
+  let sw = image.naturalWidth;
+  let sh = image.naturalHeight;
+
+  if (imageRatio > canvasRatio) {
+    sw = image.naturalHeight * canvasRatio;
+    sx = (image.naturalWidth - sw) / 2;
+  } else {
+    sh = image.naturalWidth / canvasRatio;
+    sy = (image.naturalHeight - sh) / 2;
+  }
+
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, width, height);
 }
 
 function drawRoadNetwork(ctx, width, height) {
@@ -459,6 +514,25 @@ function drawPov(drone, visible) {
   povCtx.fillStyle = terrain;
   povCtx.fillRect(0, horizon, width, height - horizon);
 
+  if (earthImagery.ready) {
+    povCtx.save();
+    povCtx.globalAlpha = 0.28;
+    const cropY = Math.floor(earthImagery.image.naturalHeight * 0.48);
+    const cropH = Math.floor(earthImagery.image.naturalHeight * 0.36);
+    povCtx.drawImage(
+      earthImagery.image,
+      0,
+      cropY,
+      earthImagery.image.naturalWidth,
+      cropH,
+      0,
+      horizon,
+      width,
+      height - horizon,
+    );
+    povCtx.restore();
+  }
+
   povCtx.fillStyle = "rgba(55, 74, 70, 0.55)";
   povCtx.beginPath();
   povCtx.moveTo(0, horizon);
@@ -570,10 +644,10 @@ function renderHardware(drone, hits) {
   const status = modeCopy();
   const bvhMs = rayPath === "rtx" ? 1.4 + hits.length * 0.16 : 8.8 + hits.length * 0.7;
   const rows = [
-    ["RTX BVH", rayPath === "rtx" ? "ray cores active" : "CPU parity view", rayPath === "rtx" ? "good" : "watch"],
+    ["Earth imagery", earthImagery.ready ? "NASA Blue Marble cached" : "waiting for local cache", earthImagery.ready ? "good" : "watch"],
+    ["Route geometry", rayPath === "rtx" ? "accelerated locally" : "CPU parity view", rayPath === "rtx" ? "good" : "watch"],
     ["Query", `${hits.length} candidates · ${bvhMs.toFixed(1)} ms`, rayPath === "rtx" ? "good" : "watch"],
-    ["Intel NPU", status.npu, "good"],
-    ["SQLite", `${status.sync} staged events`, "local"],
+    ["Mission cache", `${status.sync} staged events`, "local"],
   ];
   document.querySelector("#hardware-list").innerHTML = rows
     .map(
@@ -581,11 +655,11 @@ function renderHardware(drone, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind}">${kind}</span></div>`,
     )
     .join("");
-  document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "RTX ray cores" : "CPU parity";
+  document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "accelerated geometry" : "CPU geometry";
   document.querySelector("#bvh-badge").textContent =
-    rayPath === "rtx" ? "RTX BVH on laptop" : "CPU BVH parity";
+    earthImagery.ready ? "Earth imagery cached" : "Earth imagery pending";
   document.querySelector("#map-hud-copy").textContent =
-    rayPath === "rtx" ? "RTX 5070 ray queries, local C2, staged Foundry export" : "CPU parity view, same offline C2 flow";
+    earthImagery.ready ? "NASA Blue Marble raster in local cache" : "Run scripts/cache_visual_assets.py to cache Earth imagery";
   document.querySelector("#range-label").textContent = `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`;
   document.querySelector("#pov-title").textContent = `${drone.callsign} POV`;
 }
@@ -607,7 +681,7 @@ function renderAlerts(drone, hits, scores) {
   } else if (scores[0][0] === "restricted volume in POV") {
     alerts.push(["critical", "Restricted volume visible in POV"]);
   }
-  alerts.push(["watch", "Offline authority active; Foundry export staged"]);
+  alerts.push(["watch", "Offline authority active; Maven packet staged"]);
   if (drone.battery < 70) alerts.push(["watch", `${drone.callsign} battery near return threshold`]);
   if (alerts.length === 0) alerts.push(["watch", "Local BVH pass clear"]);
   document.querySelector("#alert-list").innerHTML = alerts
@@ -699,5 +773,5 @@ document.querySelector("#toggle-bvh").addEventListener("click", () => {
   pushLog(`BVH path switched to ${rayPath === "rtx" ? "RTX ray cores" : "CPU parity"} locally.`);
 });
 
-pushLog("Offline field node started; local graphics, BVH, NPU, and SQLite active.");
+pushLog("Offline field node started; local graphics and Earth imagery cache active.");
 requestAnimationFrame(tick);

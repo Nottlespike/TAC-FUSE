@@ -1,0 +1,67 @@
+# TAC-FUSE visual-asset source registry
+# The prepare path validates local files only. The cache path downloads only
+# entries that explicitly set auto_download: true and restriction: none.
+
+name: visual_asset_sources
+description: >
+  Registry of real Earth imagery, orthophotos, drone POV frames, and reference
+  imagery for TAC-FUSE visualization and computer-vision demos.
+
+defaults:
+  auto_download: false
+  license: "operator-provided"
+  restriction: "none"
+  cache_root: "assets/visual"
+
+sources:
+  - id: nasa_blue_marble_january
+    description: >
+      NASA Blue Marble: Next Generation global Earth imagery with topography
+      and bathymetry. This gives the browser a real satellite-derived visual
+      asset immediately while higher-resolution field-area orthophotos are
+      staged separately.
+    modality: orthophoto
+    capture_date: "2004-01-01"
+    source_url: "https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-topography-bathymetry/january/world.topo.bathy.200401.3x5400x2700.jpg"
+    license: "NASA Media Usage Guidelines"
+    restriction: "none"
+    attribution: "NASA Earth Observatory Blue Marble: Next Generation."
+    expected_labels:
+      - "earth_surface"
+      - "terrain"
+      - "vegetation"
+      - "water"
+      - "snow"
+      - "desert"
+    local_cache_path: "assets/visual/earth/blue_marble_january_5400.jpg"
+    auto_download: true
+    formats: ["jpg"]
+    resolution_m_per_px: 8000
+    max_download_bytes: 25000000
+
+  - id: orthophoto_field_area
+    description: >
+      Operator-provided orthophoto mosaic for the default field-area bounding
+      box. Replace source_url with a real endpoint only after confirming the
+      license permits local caching and demo redistribution.
+    modality: orthophoto
+    capture_date: "2025-01-01"
+    source_url: ""
+    license: "operator-provided"
+    restriction: "manual"
+    attribution: "Operator-supplied aerial imagery. Verify license before redistribution."
+    expected_labels:
+      - "building"
+      - "road"
+      - "vegetation"
+      - "water"
+      - "bare_ground"
+    local_cache_path: "assets/visual/orthophoto_field_area.tif"
+    auto_download: false
+    formats: ["tif", "png", "jpg"]
+    resolution_m_per_px: 0.15
+
+manifest:
+  output_path: "configs/assets/visual_asset_manifest.json"
+  local_only: true
+  hash_algorithm: "sha256"
