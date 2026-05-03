@@ -7,12 +7,17 @@ const AOI_TILE = {
   meshStepM: 120,
 };
 const BASE = { x: 120, y: 850 };
+const POV_MAP_ANCHOR = { x: 610, y: 590, z: 120 };
 const colors = {
   alpha: "#55d6a6",
   bravo: "#79b8ff",
   charlie: "#ff5d5d",
   delta: "#e6c35c",
   team: "#d8e0dc",
+  object: "#d9a05f",
+  signal: "#d7d95f",
+  personnel: "#b8d8ff",
+  micro: "#c9a3ff",
 };
 
 const earthImagery = {
@@ -128,6 +133,61 @@ const groundTeam = {
   confidence: 0.95,
   latency: 8,
 };
+
+const sceneClassTargets = [
+  {
+    id: "scene-vehicle-17",
+    key: "object",
+    callsign: "Track 17",
+    type: "vehicle",
+    x: 676,
+    y: 486,
+    z: 7,
+    heading: 18,
+    freshness: 0.9,
+    confidence: 0.78,
+    latency: 58,
+  },
+  {
+    id: "scene-signal-04",
+    key: "signal",
+    callsign: "Signal 04",
+    type: "rf-source",
+    x: 586,
+    y: 356,
+    z: 5,
+    heading: 0,
+    freshness: 0.84,
+    confidence: 0.7,
+    latency: 66,
+  },
+  {
+    id: "scene-personnel-12",
+    key: "personnel",
+    callsign: "Group 12",
+    type: "personnel",
+    x: 744,
+    y: 620,
+    z: 3,
+    heading: 0,
+    freshness: 0.87,
+    confidence: 0.73,
+    latency: 63,
+  },
+  {
+    id: "scene-micro-22",
+    key: "micro",
+    callsign: "Track 22",
+    type: "small-uas",
+    x: 420,
+    y: 560,
+    z: 72,
+    heading: 82,
+    freshness: 0.76,
+    confidence: 0.64,
+    latency: 71,
+  },
+];
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
@@ -277,6 +337,10 @@ earthImagery.image.src = earthImagery.src;
 
 function allFeeds() {
   return [...feeds, groundTeam];
+}
+
+function detectableObjects() {
+  return [...allFeeds(), ...sceneClassTargets];
 }
 
 function selectedFeed() {
@@ -538,7 +602,7 @@ function classifyFrame(feed, visible) {
 function visibleObjects(feed) {
   const objects = [];
   const detectionRangeM = 650;
-  for (const target of allFeeds()) {
+  for (const target of detectableObjects()) {
     if (target.id === feed.id) continue;
     const dx = target.x - feed.x;
     const dy = target.y - feed.y;
@@ -866,6 +930,10 @@ function drawPov(feed, visible) {
 }
 
 function detectionClass(asset) {
+  if (asset.type === "vehicle") return "wheeled vehicle";
+  if (asset.type === "rf-source") return "rf source";
+  if (asset.type === "personnel") return "personnel";
+  if (asset.type === "small-uas") return "small UAS";
   if (asset.type === "ground") return "ground team";
   if (asset.type === "fixed-wing") return "fixed wing";
   return "quadrotor";
@@ -876,12 +944,13 @@ function mapProjectionScale(width, height) {
 }
 
 function projectPovMapPoint(feed, point, width, height, zRelativeM = 0) {
+  void feed;
   const scale = mapProjectionScale(width, height);
-  const dx = point.x - feed.x;
-  const dy = point.y - feed.y;
+  const dx = point.x - POV_MAP_ANCHOR.x;
+  const dy = point.y - POV_MAP_ANCHOR.y;
   return {
     x: width * 0.5 + (dx - dy) * scale * 0.66,
-    y: height * 0.57 + (dx + dy) * scale * 0.34 - zRelativeM * 0.42,
+    y: height * 0.58 + (dx + dy) * scale * 0.34 - zRelativeM * 0.42,
   };
 }
 
@@ -913,13 +982,13 @@ function drawPov3DGrid(feed, width, height) {
 
     povCtx.beginPath();
     for (let u = -extent; u <= extent; u += step / 2) {
-      const point = { x: feed.x + u, y: feed.y + offset };
+      const point = { x: POV_MAP_ANCHOR.x + u, y: POV_MAP_ANCHOR.y + offset };
       const projected = projectPovMapPoint(
         feed,
         point,
         width,
         height,
-        terrainHeightAt(point.x, point.y) - feed.z,
+        terrainHeightAt(point.x, point.y) - POV_MAP_ANCHOR.z,
       );
       if (u === -extent) povCtx.moveTo(projected.x, projected.y);
       else povCtx.lineTo(projected.x, projected.y);
@@ -928,13 +997,13 @@ function drawPov3DGrid(feed, width, height) {
 
     povCtx.beginPath();
     for (let v = -extent; v <= extent; v += step / 2) {
-      const point = { x: feed.x + offset, y: feed.y + v };
+      const point = { x: POV_MAP_ANCHOR.x + offset, y: POV_MAP_ANCHOR.y + v };
       const projected = projectPovMapPoint(
         feed,
         point,
         width,
         height,
-        terrainHeightAt(point.x, point.y) - feed.z,
+        terrainHeightAt(point.x, point.y) - POV_MAP_ANCHOR.z,
       );
       if (v === -extent) povCtx.moveTo(projected.x, projected.y);
       else povCtx.lineTo(projected.x, projected.y);
@@ -947,14 +1016,14 @@ function drawPov3DGrid(feed, width, height) {
 function drawPovHazards(feed, width, height) {
   const scale = mapProjectionScale(width, height);
   for (const hazard of hazards) {
-    const distance = Math.hypot(hazard.x - feed.x, hazard.y - feed.y);
+    const distance = Math.hypot(hazard.x - POV_MAP_ANCHOR.x, hazard.y - POV_MAP_ANCHOR.y);
     if (distance > 780) continue;
     const projected = projectPovMapPoint(
       feed,
       hazard,
       width,
       height,
-      terrainHeightAt(hazard.x, hazard.y) - feed.z,
+      terrainHeightAt(hazard.x, hazard.y) - POV_MAP_ANCHOR.z,
     );
     const critical = hazard.severity === "critical";
     povCtx.save();
@@ -973,7 +1042,7 @@ function drawPovHazards(feed, width, height) {
 }
 
 function drawPovDetectionFrustum(feed, width, height) {
-  const origin = projectPovMapPoint(feed, feed, width, height, 0);
+  const origin = projectPovMapPoint(feed, feed, width, height, feed.z - POV_MAP_ANCHOR.z);
   const heading = (feed.heading * Math.PI) / 180;
   const range = 560;
   const left = {
@@ -984,8 +1053,20 @@ function drawPovDetectionFrustum(feed, width, height) {
     x: feed.x + Math.cos(heading + 0.55) * range,
     y: feed.y + Math.sin(heading + 0.55) * range,
   };
-  const leftProjected = projectPovMapPoint(feed, left, width, height, -feed.z * 0.35);
-  const rightProjected = projectPovMapPoint(feed, right, width, height, -feed.z * 0.35);
+  const leftProjected = projectPovMapPoint(
+    feed,
+    left,
+    width,
+    height,
+    terrainHeightAt(left.x, left.y) - POV_MAP_ANCHOR.z,
+  );
+  const rightProjected = projectPovMapPoint(
+    feed,
+    right,
+    width,
+    height,
+    terrainHeightAt(right.x, right.y) - POV_MAP_ANCHOR.z,
+  );
 
   povCtx.save();
   povCtx.fillStyle = "rgba(85, 214, 166, 0.08)";
@@ -1021,9 +1102,9 @@ function drawPovObjects(feed, visible, width, height) {
         obj,
         width,
         height,
-        terrainHeightAt(obj.x, obj.y) - feed.z,
+        terrainHeightAt(obj.x, obj.y) - POV_MAP_ANCHOR.z,
       ),
-      air: projectPovMapPoint(feed, obj, width, height, obj.z - feed.z),
+      air: projectPovMapPoint(feed, obj, width, height, obj.z - POV_MAP_ANCHOR.z),
     }))
     .sort((a, b) => a.ground.y - b.ground.y);
 
@@ -1058,13 +1139,28 @@ function drawPovObjectMarker(obj) {
   povCtx.strokeStyle = critical ? "#ff5d5d" : "#f5f1e8";
   povCtx.lineWidth = critical ? 3 : 2;
   povCtx.beginPath();
-  if (obj.type === "ground") {
+  if (obj.type === "ground" || obj.type === "vehicle") {
     povCtx.rect(obj.air.x - markerRadius, obj.air.y - markerRadius / 2, markerRadius * 2, markerRadius);
+  } else if (obj.type === "personnel") {
+    povCtx.arc(obj.air.x - 5, obj.air.y, 4.5, 0, Math.PI * 2);
+    povCtx.moveTo(obj.air.x + 9, obj.air.y);
+    povCtx.arc(obj.air.x + 5, obj.air.y, 4.5, 0, Math.PI * 2);
+  } else if (obj.type === "rf-source") {
+    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y);
+    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius);
+    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y);
+    povCtx.closePath();
   } else if (obj.type === "fixed-wing") {
     povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
     povCtx.lineTo(obj.air.x + markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
     povCtx.lineTo(obj.air.x, obj.air.y + markerRadius * 0.25);
     povCtx.lineTo(obj.air.x - markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
+    povCtx.closePath();
+  } else if (obj.type === "small-uas") {
+    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius * 0.85);
+    povCtx.lineTo(obj.air.x + markerRadius, obj.air.y + markerRadius * 0.65);
+    povCtx.lineTo(obj.air.x - markerRadius, obj.air.y + markerRadius * 0.65);
     povCtx.closePath();
   } else {
     povCtx.arc(obj.air.x, obj.air.y, markerRadius, 0, Math.PI * 2);

@@ -5,8 +5,8 @@ into prioritized operator alerts without requiring cloud infrastructure.
 
 Alert triggers (all offline-testable):
 - Video/RF cue: object detection or signal anomaly from sensor stream
-- Position breach: asset enters restricted zone
-- Route conflict: two assets on collision course
+- Position breach: asset enters restricted zone (auto from GNSS events)
+- Route conflict: two assets on collision course (auto from tracked positions)
 - Stale feed: sensor/telemetry gap exceeds threshold
 - Battery low: asset battery below threshold
 - Confidence drop: track quality falls below usable threshold
@@ -15,6 +15,11 @@ The alerting engine is purely local and does not require:
 - Foundry/Maven connectivity
 - Intel NPU or object detection models
 - Internet access or Hugging Face downloads
+
+Alert deduplication:
+- Each (asset_id, alert_type) pair is tracked with a cooldown window.
+- Duplicate alerts for the same condition are suppressed until the
+  cooldown expires, preventing alert storms from repeated events.
 """
 
 from __future__ import annotations

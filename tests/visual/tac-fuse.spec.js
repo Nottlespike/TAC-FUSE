@@ -40,6 +40,8 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
+  const targetClasses = (await page.locator(".target-label strong").allTextContents()).join(" ");
+  expect(targetClasses).toMatch(/wheeled vehicle|rf source|personnel|small UAS/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();

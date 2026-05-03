@@ -168,9 +168,13 @@ INFERENCE_OWNED_PATHS = (
 OBJECT_MAP_REQUIRED_TERMS: dict[str, tuple[str, ...]] = {
     "web/app.js": (
         "3d object map",
+        "pov_map_anchor",
         "projectpovmappoint",
+        "sceneclasstargets",
         "detectionconfidence",
         "range and altitude labels",
+        "wheeled vehicle",
+        "rf source",
     ),
     "web/index.html": (
         "3d map feed",

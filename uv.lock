@@ -1166,6 +1166,11 @@ npu = [
     { name = "transformers" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "openvino", marker = "extra == 'npu'", specifier = ">=2025.0" },
@@ -1178,6 +1183,9 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'npu'", specifier = ">=4.53" },
 ]
 provides-extras = ["dev", "npu"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "tokenizers"
