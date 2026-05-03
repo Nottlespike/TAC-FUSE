@@ -928,28 +928,38 @@ def build_task_pack(
     root = (root or project_root()).resolve()
     audit = audit_alignment(root)
 
-    tasks: list[dict[str, Any]] = []
+    task_candidates: list[tuple[int, dict[str, Any]]] = []
     seen_names: set[str] = set()
-    for finding in audit.findings:
-        task = task_from_finding(finding)
-        name = task["name"]
-        if name in seen_names:
-            continue
-        tasks.append(task)
-        seen_names.add(name)
-        if len(tasks) >= max_tasks:
-            break
-
-    if include_backlog and len(tasks) < max_tasks:
+    serial = 0
+    if include_backlog:
         for blueprint in default_backlog():
             task = task_from_blueprint(blueprint)
             name = task["name"]
             if name in seen_names:
                 continue
-            tasks.append(task)
+            task_candidates.append((serial, task))
+            serial += 1
             seen_names.add(name)
-            if len(tasks) >= max_tasks:
-                break
+
+    for finding in audit.findings:
+        task = task_from_finding(finding)
+        name = task["name"]
+        if name in seen_names:
+            continue
+        task_candidates.append((serial, task))
+        serial += 1
+        seen_names.add(name)
+
+    phase_rank = {phase: index for index, (phase, _label) in enumerate(WORKFLOW_ORDER)}
+    priority_rank = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    task_candidates.sort(
+        key=lambda item: (
+            phase_rank.get(item[1]["metadata"].get("workflow_stage", "cleanup"), 99),
+            priority_rank.get(item[1].get("priority", "P3"), 99),
+            item[0],
+        )
+    )
+    tasks = [task for _serial, task in task_candidates[:max_tasks]]
 
     return {
         "metadata": {
