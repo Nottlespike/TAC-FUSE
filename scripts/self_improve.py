@@ -6,6 +6,8 @@ TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation, so
 the audit and generated work stay centered on hardened-laptop local C2 under
 degraded or denied connectivity. Accelerator and object-detection work is
 treated as a supporting proof point, not the product thesis.
+The final hardware target is Strix: an 8 GB RTX laptop GPU plus Intel NPU, with
+`uv` available to non-interactive SSH shells as part of bring-up.
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("disconnected_resilience", "Disconnected resilience"),
     ("drone_coordination", "Drone coordination"),
     ("sensor_fusion_alerting", "Sensor fusion and alerting"),
+    ("functional_runtime", "Functional Redis/embedding/track runtime"),
+    ("strix_hardware_readiness", "Strix CUDA/NPU bring-up"),
     ("object_map_quantification", "3D field-C2 quantification"),
     ("power_latency_posture", "Power/latency posture"),
     ("enterprise_sync_boundary", "Enterprise sync boundary"),
@@ -74,6 +78,25 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "video",
         "alert",
         "prioritized",
+    ),
+    "functional_runtime": (
+        "redis",
+        "embedding",
+        "retrieval",
+        "vector",
+        "track memory",
+        "object permanence",
+        "fusion spool",
+    ),
+    "strix_hardware_readiness": (
+        "strix",
+        "uv",
+        "cuda",
+        "rtx",
+        "8 gb",
+        "vram",
+        "openvino",
+        "npu",
     ),
     "object_map_quantification": (
         "3d field view",
@@ -527,6 +550,23 @@ def default_backlog() -> list[TaskBlueprint]:
             ),
         ),
         TaskBlueprint(
+            name="tac-fuse-p0-strix-bringup",
+            priority="P0",
+            phase="explore",
+            title="Make Strix bring-up a hard readiness path",
+            focus="strix_hardware_readiness",
+            body=(
+                "Codify the Strix hardware target: non-interactive SSH must expose uv "
+                "on PATH, the RTX 5070-class 8 GB GPU must pass CUDA/RTX readiness, "
+                "and the Intel NPU/OpenVINO model path must fail clearly until the "
+                "exported model is present. CPU parity remains for CI, but Strix "
+                "bring-up is a hard functional target, not UI copy."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && bash scripts/check_strix_bringup.sh"
+            ),
+        ),
+        TaskBlueprint(
             name="tac-fuse-p0-denied-link-swarm-control",
             priority="P0",
             phase="create",
@@ -541,6 +581,25 @@ def default_backlog() -> list[TaskBlueprint]:
             verify_command=(
                 "cd contrib/TAC-FUSE && uv run pytest "
                 "tests/test_mission_state.py tests/test_connectivity.py -q"
+            ),
+        ),
+        TaskBlueprint(
+            name="tac-fuse-p1-functional-runtime",
+            priority="P1",
+            phase="create",
+            title="Wire Redis live state, local embeddings, and fused track memory",
+            focus="functional_runtime",
+            body=(
+                "Build on the refactored surfaces already present: denied_ops.py, "
+                "fusion_node/ingest.py, fusion_node/spool.py, ray_query.py, and "
+                "vision/zero_shot.py. Add Redis live state for heartbeats/current "
+                "tracks/queue posture, local embedding retrieval for mission/replay "
+                "search, and persistent fused-track memory with source attribution "
+                "so Alpha/Bravo/Charlie/Delta observations have object permanence."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && uv run pytest "
+                "tests/test_local_sensor_ingest_bus.py tests/test_offline_fusion_spool.py -q"
             ),
         ),
         TaskBlueprint(
@@ -662,8 +721,11 @@ Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
-- Core behavior must remain offline-testable and must not require Foundry, Maven, OpenVINO,
+- Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
+- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,
+  the exported NPU model, Redis, and the actual Strix hardware, and should fail
+  clearly when one of those is missing.
 - If you touch behavior, add or update focused offline tests.
 - Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,
   or validation changes.
@@ -720,14 +782,17 @@ Fix this alignment finding:
 {finding.label()}
 
 Keep the product thesis on hardened-laptop local C2 under degraded or denied connectivity.
-Accelerator, MPU/NPU/GPU/RTX, and object-detection language must remain optional and supporting.
+Accelerator, MPU/NPU/GPU/RTX, and object-detection language must remain supporting,
+but Strix hardware bring-up is a real functional target.
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
-- Core behavior must remain offline-testable and must not require Foundry, Maven, OpenVINO,
+- Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
+- Strix bring-up tasks may hard-require uv, CUDA/RTX, OpenVINO, Redis, and the
+  exported NPU model on the actual Strix target.
 
 Update focused docs, UI copy, code, or tests as needed. If this changes behavior, update
 contrib/TAC-FUSE/CHANGELOG.md.
