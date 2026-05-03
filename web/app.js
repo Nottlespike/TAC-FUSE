@@ -266,7 +266,7 @@ const sceneClassTargets = [
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
-let rayPath = "cpu";
+let rayPath = "cuda";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -1000,6 +1000,7 @@ function fusedTrackObjects(feed) {
   for (const track of fusedTracks.values()) {
     const age = simTime - track.lastSeen;
     if (age > TRACK_MEMORY_SECONDS) continue;
+    if (track.targetId === feed.id) continue;
     const directObj = directById.get(track.targetId);
     const base = directObj || track;
     const dx = track.x - feed.x;
@@ -1898,14 +1899,16 @@ function placeDetectionLabel(obj, width, height, placedRects) {
 function addDetectionLabel(obj, width, height, placedRects) {
   const rect = placeDetectionLabel(obj, width, height, placedRects);
   const label = document.createElement("div");
-  label.className = `target-label ${obj.threat}`;
+  label.className = `target-label ${obj.threat} ${obj.trackStatus || ""}`;
   label.style.left = `${rect.x}px`;
   label.style.top = `${rect.y}px`;
 
   const title = document.createElement("strong");
   title.textContent = `${obj.className} ${Math.round(obj.detectionConfidence * 100)}%`;
   const details = document.createElement("span");
-  details.textContent = `${obj.callsign} · ${formatMeters(obj.range)} · Δ${formatMeters(obj.altitudeDelta)}`;
+  const sourceCopy = obj.trackSources?.length ? ` · ${obj.trackSources.slice(0, 2).join("+")}` : "";
+  const statusCopy = obj.trackStatus === "memory" ? `Last Seen ${Math.round(obj.trackAge)}s` : "Live Track";
+  details.textContent = `${obj.callsign} · ${formatMeters(obj.range)} · ${statusCopy}${sourceCopy}`;
   label.append(title, details);
   overlay.appendChild(label);
 }
@@ -2045,14 +2048,17 @@ function renderStagedPacket() {
 
 function renderHardware(feed, hits) {
   const status = modeCopy();
-  const bvhMs = 8.8 + hits.length * 0.7;
+  void status;
+  const bvhMs = (rayPath === "cuda" ? 2.4 : 8.8) + hits.length * (rayPath === "cuda" ? 0.22 : 0.7);
   const unknowns = sceneClassTargets.filter((item) => item.type.startsWith("unknown"));
   const npuReady = feeds.filter((item) => item.npu).length;
+  const liveTracks = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
   const rows = [
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["Route Guard BVH", `${hits.length} Checks · ${formatLatencyMs(bvhMs)}`, "Good"],
+    ["CUDA/RTX BVH", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${rayPath.toUpperCase()}`, "Good"],
+    ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
@@ -2233,6 +2239,7 @@ function renderMissionEvidence(feed, hits, scores) {
   const allContacts = detectableObjects();
   const unknownCount = sceneClassTargets.filter((item) => item.type.startsWith("unknown")).length;
   const npuCount = feeds.filter((item) => item.npu).length;
+  const trackCount = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
   const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
   const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   const routeState = routeConflict ? "Reroute Active" : "Corridor Guarded";
@@ -2240,7 +2247,7 @@ function renderMissionEvidence(feed, hits, scores) {
   const signals = MISSION_SIGNALS.map((signal) => {
     let detail;
     if (signal.kind === "system") {
-      detail = `${npuCount} Drone NPUs · ${allContacts.length} Contacts · ${formatLatencyMs(avgLatency)} Avg Feed`;
+      detail = `${npuCount} Drone NPUs · ${trackCount || allContacts.length} Fused Tracks · ${formatLatencyMs(avgLatency)} Avg Feed`;
     } else if (signal.kind === "route") {
       detail = `${formatMeters(routeLengthMeters())} Route · ${unknownCount} Unknowns · ${routeState}`;
     } else {
@@ -2310,6 +2317,7 @@ function renderFrame() {
   drawSwarmMap();
   drawPov(feed, visible);
   renderFeeds();
+  renderFeedTabs();
   renderFeedQuality();
   renderStagedPacket();
   renderHardware(feed, hits);
@@ -2391,7 +2399,7 @@ function wrapAngle(angle) {
 }
 
 function cycleSelected(offset) {
-  const all = allFeeds();
+  const all = feeds;
   const current = Math.max(0, all.findIndex((a) => a.id === selectedId));
   const next = (current + offset + all.length) % all.length;
   selectedId = all[next].id;
@@ -2430,9 +2438,9 @@ document.querySelector("#sync-now").addEventListener("click", () => triggerSync(
 document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
 document.querySelector("#toggle-bvh").addEventListener("click", () => {
-  rayPath = rayPath === "rtx" ? "cpu" : "rtx";
+  rayPath = rayPath === "cuda" ? "cpu" : "cuda";
   pushLog(
-    `Route Guard Switched To ${rayPath === "rtx" ? "Optional RTX Acceleration" : "CPU Path"} Locally.`,
+    `Route Guard Switched To ${rayPath === "cuda" ? "CUDA/RTX BVH Lane" : "CPU Parity Path"} Locally.`,
   );
 });
 
