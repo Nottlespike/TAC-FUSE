@@ -267,7 +267,8 @@ const sceneClassTargets = [
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
-let rayPath = "cpu";
+const strixCompute = window.TAC_FUSE_STRIX_COMPUTE || null;
+let rayPath = strixCompute?.ray?.accelerated ? "cuda" : "cpu";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -451,7 +452,25 @@ function displayTier(tier) {
 }
 
 function geometryBackendLabel() {
-  return rayPath === "cuda" ? "CUDA/RTX" : "CPU BVH";
+  return strixCompute?.ui?.backend_label || (rayPath === "cuda" ? "CUDA/RTX" : "CPU BVH");
+}
+
+function strixComputeSummaryLabel() {
+  return strixCompute?.ui?.summary_label || `${geometryBackendLabel()} + NPU Pending`;
+}
+
+function strixNpuLabel() {
+  return strixCompute?.ui?.npu_label || "NPU Pending";
+}
+
+function strixComputeFreshnessLabel() {
+  const generatedAt = strixCompute?.generated_at;
+  if (!generatedAt) return "Fallback";
+  const timestamp = Date.parse(generatedAt);
+  if (Number.isNaN(timestamp)) return "Fallback";
+  const staleAfterSeconds = strixCompute?.ui?.stale_after_seconds || 300;
+  const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
+  return ageSeconds > staleAfterSeconds ? "Stale" : "Live";
 }
 
 earthImagery.image.onload = () => {
@@ -2342,10 +2361,11 @@ function renderHardware(feed, hits) {
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
+    ["Strix Compute", `${strixComputeSummaryLabel()} · ${strixComputeFreshnessLabel()}`, rayPath === "cuda" || strixCompute?.npu?.ready ? "Good" : "Watch"],
     ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
     ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
-    ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
+    ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${strixNpuLabel()}`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
   ];
@@ -2356,6 +2376,7 @@ function renderHardware(feed, hits) {
     )
     .join("");
   setText("#bvh-label", criticalHit ? "Corridor Blocked" : nearestHit ? "Corridor Monitoring" : "Corridor Guarded");
+  setText("#compute-label", strixComputeSummaryLabel());
   setText("#fusion-badge", `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
