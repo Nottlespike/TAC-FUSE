@@ -99,6 +99,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional `classifier-runtime` dependency extra, packaged SigLIP2 classifier
   loader, readiness script, and browser status surface for the H100-selected
   classifier package.
+- Browser classifier-cue artifact writer (`scripts/write_classifier_cue.py`)
+  that runs the packaged H100-selected SigLIP2 classifier and emits
+  `web/classifier_cue.js` for direct `file://` TAC demo use.
 
 ### Changed
 - The browser field view now applies RT geometry decisions to drone standoff,
@@ -124,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Field C2 view draws the wheeled vehicle as a four-wheel silhouette, counts
   vehicle frames for the local classifier story, and moves aerial contacts in
   from AOI edges instead of spawning them in the middle of the map.
+- TAC browser views now consume `web/classifier_cue.js`, so Scene
+  Understanding, field overlay chips, Fusion Node Status, and denied-ops proof
+  can display an actual packaged-model cue instead of only package readiness.
 - Removed the ambiguous manual route action from Local C2; corridor safety now
   presents as automatic route-guard monitoring backed by the BVH/RTX geometry
   lane, while operator commands stay limited to direct swarm intent.

@@ -33,6 +33,18 @@ const earthImagery = {
   ready: false,
   failed: false,
 };
+const edgeCompute = window.TAC_FUSE_EDGE_COMPUTE || null;
+const classifierCue = window.TAC_FUSE_CLASSIFIER_CUE || null;
+const liveClassifierCue = classifierCue?.ready ? classifierCue.classification : null;
+
+const CLASSIFIER_CUE_LABELS = {
+  clear_corridor: "Clear Corridor",
+  dense_multi_asset_formation: "Dense Formation",
+  drone_near_restricted_area: "Drone Near Restricted",
+  low_altitude_clutter: "Low Altitude Clutter",
+  low_power_return_corridor: "Low Power Return",
+  reduced_visibility_field_conditions: "Reduced Visibility",
+};
 
 const hazards = [
   { id: "rf-denial-east", label: "RF Denial", x: 610, y: 360, r: 105, severity: "critical" },
@@ -165,10 +177,20 @@ const sceneClassTargets = [
     heading: 18,
     speed: 7,
     routeIndex: 4,
-    trainingClass: "four_wheeled_vehicle",
+    trainingClass: liveClassifierCue?.class_label || "four_wheeled_vehicle",
+    classifierCue: liveClassifierCue
+      ? {
+          label: liveClassifierCue.class_label,
+          confidence: liveClassifierCue.confidence,
+          latencyMs: liveClassifierCue.inference_latency_ms,
+          modelId: liveClassifierCue.model_id,
+        }
+      : null,
     freshness: 0.9,
-    confidence: 0.78,
-    latency: 58,
+    confidence: liveClassifierCue?.confidence || 0.78,
+    latency: liveClassifierCue?.inference_latency_ms
+      ? Math.round(liveClassifierCue.inference_latency_ms)
+      : 58,
   },
   {
     id: "scene-signal-04",
@@ -273,7 +295,6 @@ const sceneClassTargets = [
 let selectedId = "uav-alpha";
 let selectedContactId = null;
 let connectivityMode = "offline";
-const edgeCompute = window.TAC_FUSE_EDGE_COMPUTE || null;
 let rayPath = edgeCompute?.ray?.accelerated ? "cuda" : "validation";
 let simPaused = false;
 let simTime = 0;
@@ -465,6 +486,45 @@ function displayTier(tier) {
     reduced: "Reduced",
   };
   return labels[tier] || tier;
+}
+
+function displayClassifierCueLabel(label) {
+  if (!label) return "No Model Cue";
+  if (CLASSIFIER_CUE_LABELS[label]) return CLASSIFIER_CUE_LABELS[label];
+  const cleaned = String(label).replace(/[_-]+/g, " ").trim();
+  if (!cleaned) return "No Model Cue";
+  return cleaned.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function classifierCueClassification() {
+  return classifierCue?.ready && classifierCue.classification ? classifierCue.classification : null;
+}
+
+function classifierCueConfidencePct(cue = classifierCueClassification()) {
+  const confidence = Number(cue?.confidence || 0);
+  return Math.round(clamp(confidence, 0, 1) * 100);
+}
+
+function classifierCueDetail() {
+  const cue = classifierCueClassification();
+  if (!cue) {
+    return classifierCue?.error || edgeCompute?.classifier_package?.reason || "No Generated Model Cue";
+  }
+  const label = displayClassifierCueLabel(cue.class_label);
+  const latency = formatLatencyMs(Number(cue.inference_latency_ms || 0));
+  return `${label} · ${classifierCueConfidencePct(cue)}% · ${latency}`;
+}
+
+function classifierCueRows() {
+  const cue = classifierCueClassification();
+  if (!cue) return null;
+  const candidates = classifierCue?.top_candidates?.length
+    ? classifierCue.top_candidates
+    : cue.all_candidates || [];
+  return candidates.slice(0, 3).map((candidate) => [
+    `H100 ${displayClassifierCueLabel(candidate.label)}`,
+    clamp(Number(candidate.confidence || 0), 0, 1),
+  ]);
 }
 
 function geometryBackendLabel() {
@@ -1039,6 +1099,10 @@ function classifyFrame(feed, visible) {
   const avgConfidence = objectCount
     ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / objectCount
     : 0;
+  const modelRows = classifierCueRows();
+  if (modelRows?.length) {
+    return modelRows;
+  }
   if (unknownCount > 0) {
     return [
       ["Unknown Contact Requires ID", 0.9],
@@ -1114,6 +1178,8 @@ function upsertFusedTrack(feed, observation) {
     callsign: observation.callsign,
     type: observation.type,
     className: observation.className,
+    trainingClass: observation.trainingClass,
+    classifierCue: observation.classifierCue,
     confidence: observation.detectionConfidence,
     threat: observation.threat,
     affiliation: observation.affiliation,
@@ -1133,6 +1199,8 @@ function upsertFusedTrack(feed, observation) {
   track.callsign = observation.callsign;
   track.type = observation.type;
   track.className = observation.className;
+  track.trainingClass = observation.trainingClass;
+  track.classifierCue = observation.classifierCue;
   track.confidence = Math.max(track.confidence * 0.72, observation.detectionConfidence);
   track.threat = observation.threat === "critical" ? "critical" : track.threat;
   track.affiliation = observation.affiliation;
@@ -1195,6 +1263,8 @@ function fusedTrackObjects(feed) {
       type: track.type,
       key: track.key,
       className: track.className,
+      trainingClass: track.trainingClass,
+      classifierCue: track.classifierCue,
       range,
       bearingDeg: Math.round(((delta * 180) / Math.PI + 360) % 360),
       altitudeDelta: Math.round(track.z - terrainHeightAt(track.x, track.y)),
@@ -2331,8 +2401,10 @@ function addDetectionLabel(obj, width, height, placedRects) {
   const sourceCopy = formatTrackSourcePair(obj.trackSources);
   const statusCopy = obj.affiliation === "friendly"
     ? "Shared Friendly ID"
+    : obj.classifierCue
+      ? `${displayClassifierCueLabel(obj.classifierCue.label)} ${classifierCueConfidencePct(obj.classifierCue)}%`
     : obj.trainingClass
-      ? "Classifier Frame"
+      ? `${displayClassifierCueLabel(obj.trainingClass)} Frame`
     : obj.trackStatus === "memory"
       ? `Last Seen ${Math.round(obj.trackAge)}s`
       : "Live Track";
@@ -2440,6 +2512,10 @@ function drawPovQuantificationPanel(visible, width, height) {
     : 0;
   const airTracks = visible.filter((obj) => obj.type !== "ground").length;
   const vehicleFrames = visible.filter((obj) => obj.type === "vehicle").length;
+  const cue = classifierCueClassification();
+  const classifierLine = cue
+    ? `H100 ${displayClassifierCueLabel(cue.class_label)} · ${classifierCueConfidencePct(cue)}%`
+    : `${vehicleFrames} Vehicle Frames For Classifier`;
   const panelWidth = 228;
   const x = width - panelWidth - 18;
   const y = 18;
@@ -2465,7 +2541,7 @@ function drawPovQuantificationPanel(visible, width, height) {
     x + 14,
     y + 70,
   );
-  povCtx.fillText(`${vehicleFrames} Vehicle Frames For Classifier`, x + 14, y + 88);
+  povCtx.fillText(classifierLine, x + 14, y + 88);
   povCtx.restore();
 }
 
@@ -2583,7 +2659,7 @@ function renderHardware(feed, hits) {
     ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
     ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
-    ["H100 Classifier", `${edgeClassifierLabel()} · ${edgeCompute?.classifier_package?.package_id || "No Package"}`, edgeCompute?.classifier_package?.ready_for_demo ? "Good" : "Watch"],
+    ["H100 Classifier", `${edgeClassifierLabel()} · ${classifierCueDetail()}`, classifierCueClassification() ? "Good" : "Watch"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${edgeNpuLabel()}`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
@@ -2720,6 +2796,7 @@ function renderDeniedProof() {
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
     { name: "Automatic Corridor Guard", status: "active", detail: `${rtControlBackendLabel()} Controls Drone Standoff And Hold Decisions` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
+    { name: "H100 Classifier Cue", status: classifierCueClassification() ? "active" : "degraded", detail: classifierCueDetail() },
     { name: "Alerting Engine", status: "active", detail: "Critical/watch alerts generated offline" },
     { name: "Command Spool Buffer", status: "active", detail: `${spoolDepth} commands held for deferred sync` },
     { name: "Drone Tasking State", status: "active", detail: `${feeds.length} drones tracked, ${swarmTasking.retaskCount} retasks` },

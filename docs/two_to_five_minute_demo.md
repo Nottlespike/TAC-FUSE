@@ -17,6 +17,7 @@ uv sync --extra dev --extra classifier-runtime
 uv run pytest -q
 uv run ruff check src tests
 uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
+uv run python scripts/write_classifier_cue.py --output web/classifier_cue.js --device CPU
 uv run python scripts/check_npu_runtime.py --device NPU
 ```
 
@@ -87,6 +88,10 @@ Switch between feeds and show that multiple drones and the ground team are still
 ### 2:10-3:00 - Corridor And Cues
 
 Show the corridor on both sides of the view. Call out the highest-priority contact and why it matters.
+
+If `web/classifier_cue.js` was regenerated successfully, point to the H100
+classifier cue in Scene Understanding or Fusion Node Status. That value is a
+packaged-model inference artifact, not a hard-coded browser score.
 
 For distributed device CV with Strix as hard-readiness proof:
 

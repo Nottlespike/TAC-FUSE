@@ -28,6 +28,9 @@ uv run python scripts/check_classifier_package.py \
     --require-package \
     --require-runtime \
     --load-model
+uv run python scripts/write_classifier_cue.py \
+    --output web/classifier_cue.js \
+    --device CPU
 uv run python scripts/check_ray_runtime.py --require-rtx
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py \
     --device NPU \

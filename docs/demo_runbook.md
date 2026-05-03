@@ -139,6 +139,7 @@ uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
 
 # 4. Strix hard-readiness lane
 uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
+uv run python scripts/write_classifier_cue.py --output web/classifier_cue.js --device CPU
 bash scripts/check_strix_bringup.sh
 ```
 

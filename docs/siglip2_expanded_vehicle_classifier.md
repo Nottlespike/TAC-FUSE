@@ -85,6 +85,16 @@ For a visible cue smoke test, pass a local frame:
 uv run python scripts/check_classifier_package.py --require-package --require-runtime --image /path/to/frame.jpg
 ```
 
+Regenerate the static browser artifact used by `web/index.html`:
+
+```bash
+uv run python scripts/write_classifier_cue.py --output web/classifier_cue.js --device CPU
+```
+
+Without `--image`, the script creates a deterministic route-guard frame under
+`reports/`, runs the packaged PyTorch classifier, and writes the top candidates
+to `window.TAC_FUSE_CLASSIFIER_CUE` for the TAC views.
+
 ## Runtime Boundary
 
 This package is now importable through `tac_fuse.vision.classifier` as
