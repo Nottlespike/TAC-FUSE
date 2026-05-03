@@ -1,4 +1,11 @@
-const WORLD_M = 1000;
+const WORLD_M = 1200;
+const AOI_TILE = {
+  label: "1.2 km local AOI",
+  cropX: 0.31,
+  cropY: 0.43,
+  cropScale: 0.18,
+  meshStepM: 120,
+};
 const BASE = { x: 120, y: 850 };
 const colors = {
   alpha: "#55d6a6",
@@ -21,7 +28,8 @@ const hazards = [
   { id: "terrain-mask", label: "terrain mask", x: 760, y: 650, r: 82, severity: "watch" },
 ];
 
-const drones = [
+// Contributor feeds to the fusion node - each has freshness/confidence/latency
+const feeds = [
   {
     id: "uav-alpha",
     key: "alpha",
@@ -34,8 +42,13 @@ const drones = [
     speed: 32,
     battery: 96,
     command: "patrol",
+    cruiseSpeed: 32,
+    cruiseAltitude: 122,
     target: { x: 690, y: 330 },
     orbitPhase: 0.1,
+    freshness: 0.96,
+    confidence: 0.88,
+    latency: 42,
   },
   {
     id: "uav-bravo",
@@ -49,8 +62,13 @@ const drones = [
     speed: 44,
     battery: 91,
     command: "relay",
+    cruiseSpeed: 44,
+    cruiseAltitude: 142,
     target: { x: 780, y: 500 },
     orbitPhase: 1.4,
+    freshness: 0.88,
+    confidence: 0.72,
+    latency: 78,
   },
   {
     id: "uav-charlie",
@@ -64,8 +82,13 @@ const drones = [
     speed: 27,
     battery: 88,
     command: "scout",
+    cruiseSpeed: 27,
+    cruiseAltitude: 98,
     target: { x: 505, y: 470 },
     orbitPhase: 2.2,
+    freshness: 0.93,
+    confidence: 0.91,
+    latency: 31,
   },
   {
     id: "uav-delta",
@@ -79,8 +102,13 @@ const drones = [
     speed: 30,
     battery: 86,
     command: "overwatch",
+    cruiseSpeed: 30,
+    cruiseAltitude: 164,
     target: { x: 640, y: 610 },
     orbitPhase: 3.1,
+    freshness: 0.81,
+    confidence: 0.65,
+    latency: 120,
   },
 ];
 
@@ -96,6 +124,9 @@ const groundTeam = {
   speed: 2,
   battery: 100,
   command: "hold",
+  freshness: 1.0,
+  confidence: 0.95,
+  latency: 8,
 };
 
 let selectedId = "uav-alpha";
@@ -105,14 +136,22 @@ let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
 let commandSeq = 1;
-const commandQueue = [];
+const stagedCommands = [];  // commands staged for sync
 const missionLog = [];
+let spoolDepth = 0;         // offline spool buffer depth
+let syncWatermark = 0;      // timestamp of last staged sync
+let syncStaged = false;     // whether a packet is staged for gate
 
 const swarmCanvas = document.querySelector("#swarm-map");
 const swarmCtx = swarmCanvas.getContext("2d");
 const povCanvas = document.querySelector("#pov-canvas");
 const povCtx = povCanvas.getContext("2d");
 const overlay = document.querySelector("#pov-overlay");
+
+function setText(selector, text) {
+  const element = document.querySelector(selector);
+  if (element) element.textContent = text;
+}
 
 earthImagery.image.onload = () => {
   earthImagery.ready = true;
@@ -122,101 +161,203 @@ earthImagery.image.onerror = () => {
 };
 earthImagery.image.src = earthImagery.src;
 
-function allAssets() {
-  return [...drones, groundTeam];
+function allFeeds() {
+  return [...feeds, groundTeam];
 }
 
-function selectedDrone() {
-  return drones.find((drone) => drone.id === selectedId) || drones[0];
+function selectedFeed() {
+  return feeds.find((f) => f.id === selectedId) || feeds[0];
 }
 
 function pushLog(text) {
   missionLog.unshift(`T+${simTime.toFixed(1)}s ${text}`);
-  missionLog.splice(5);
+  missionLog.splice(8);
 }
 
 function issueCommand(command) {
-  const drone = selectedDrone();
+  const feed = selectedFeed();
   const record = {
     id: `cmd-${String(commandSeq).padStart(3, "0")}`,
-    assetId: drone.id,
-    callsign: drone.callsign,
+    assetId: feed.id,
+    callsign: feed.callsign,
     command,
-    mode: connectivityMode,
-    status: "local",
+    mode: "fusion-local",
+    status: "staged",
+    ts: simTime,
   };
   commandSeq += 1;
-  commandQueue.unshift(record);
-  commandQueue.splice(8);
+  stagedCommands.unshift(record);
+  stagedCommands.splice(12);
+
+  spoolDepth = stagedCommands.length;
+  syncStaged = spoolDepth > 0;
+  if (syncStaged) {
+    syncWatermark = simTime;
+  }
 
   if (command === "return") {
-    drone.command = "return";
-    drone.target = { ...BASE };
+    feed.command = "return";
+    feed.target = { ...BASE };
   } else if (command === "hold") {
-    drone.command = "hold";
+    feed.command = "hold";
   } else if (command === "patrol") {
-    drone.command = "patrol";
-    drone.target = { x: 680, y: 360 };
+    feed.command = "patrol";
+    feed.target = { x: 680, y: 360 };
   } else if (command === "abort") {
-    drones.forEach((item) => {
+    feeds.forEach((item) => {
       item.command = "hold";
     });
   } else if (command === "resume") {
-    drone.command = "patrol";
+    feed.command = "patrol";
   }
-  pushLog(`${record.callsign} command ${command.toUpperCase()} applied locally.`);
+  pushLog(`${record.callsign} ${command.toUpperCase()} staged for sync.`);
 }
 
 function stepSimulation(dt) {
   if (simPaused) return;
   simTime += dt;
-  for (const drone of drones) {
-    drone.battery = Math.max(35, drone.battery - dt * 0.018);
-    if (drone.command === "hold") continue;
 
-    if (drone.command === "patrol" || drone.command === "relay" || drone.command === "overwatch") {
-      drone.orbitPhase += dt * 0.22;
-      const center = drone.target;
-      const radius = drone.command === "relay" ? 230 : drone.command === "overwatch" ? 150 : 180;
-      drone.target = {
-        x: center.x + Math.cos(drone.orbitPhase) * radius * 0.012,
-        y: center.y + Math.sin(drone.orbitPhase) * radius * 0.012,
+  // drift feed quality metrics over time
+  for (const feed of feeds) {
+    feed.freshness = Math.max(0.4, Math.min(1.0, feed.freshness + (Math.random() - 0.5) * 0.02));
+    feed.confidence = Math.max(0.3, Math.min(0.99, feed.confidence + (Math.random() - 0.5) * 0.03));
+    feed.latency = Math.max(20, Math.min(300, feed.latency + (Math.random() - 0.5) * 10));
+  }
+
+  for (const feed of feeds) {
+    feed.battery = Math.max(35, feed.battery - dt * 0.018);
+    if (feed.command === "hold") {
+      brakeAsset(feed, dt);
+      continue;
+    }
+
+    if (feed.command === "patrol" || feed.command === "relay" || feed.command === "overwatch") {
+      feed.orbitPhase += dt * 0.22;
+      const center = feed.target;
+      const radius = feed.command === "relay" ? 230 : feed.command === "overwatch" ? 150 : 180;
+      feed.target = {
+        x: center.x + Math.cos(feed.orbitPhase) * radius * 0.012,
+        y: center.y + Math.sin(feed.orbitPhase) * radius * 0.012,
       };
     }
 
-    const avoidance = bvhQuery(drone).find((hit) => hit.kind === "hazard" && hit.distance < hit.radius + 35);
+    const spatialHits = bvhQuery(feed);
+    const avoidance = spatialHits.find((hit) => hit.kind === "hazard" && hit.distance < hit.radius + 35);
+    const terrainConflict = spatialHits.find((hit) => hit.kind === "terrain" && hit.distance < hit.radius);
     const target = avoidance
       ? {
-          x: drone.x + (drone.x - avoidance.x) * 0.8,
-          y: drone.y + (drone.y - avoidance.y) * 0.8,
+          x: feed.x + (feed.x - avoidance.x) * 0.8,
+          y: feed.y + (feed.y - avoidance.y) * 0.8,
         }
-      : drone.target;
-    moveToward(drone, target, dt);
+      : feed.target;
+    moveToward(feed, target, dt, avoidance || terrainConflict);
   }
 }
 
-function moveToward(drone, target, dt) {
-  const dx = target.x - drone.x;
-  const dy = target.y - drone.y;
+function moveToward(feed, target, dt, avoidance) {
+  const dx = target.x - feed.x;
+  const dy = target.y - feed.y;
   const distance = Math.hypot(dx, dy);
-  if (distance < 1) return;
-  const step = Math.min(distance, drone.speed * dt);
-  drone.x += (dx / distance) * step;
-  drone.y += (dy / distance) * step;
-  drone.heading = (Math.atan2(dy, dx) * 180) / Math.PI;
-  drone.x = clamp(drone.x, 40, WORLD_M - 40);
-  drone.y = clamp(drone.y, 40, WORLD_M - 40);
+  if (distance < 1) {
+    updateAltitude(feed, dt, avoidance);
+    return;
+  }
+
+  const desiredHeading = Math.atan2(dy, dx);
+  const currentHeading = (feed.heading * Math.PI) / 180;
+  const limits = kinematicLimits(feed);
+  const maxTurn = limits.turnRateRad * dt;
+  const turn = clamp(wrapAngle(desiredHeading - currentHeading), -maxTurn, maxTurn);
+  const nextHeading = currentHeading + turn;
+  const targetSpeed = targetCruiseSpeed(feed, distance);
+  feed.speed = approach(feed.speed, targetSpeed, limits.acceleration * dt);
+
+  const step = Math.min(distance + 4, feed.speed * dt);
+  feed.x += Math.cos(nextHeading) * step;
+  feed.y += Math.sin(nextHeading) * step;
+  feed.heading = (nextHeading * 180) / Math.PI;
+  feed.x = clamp(feed.x, 40, WORLD_M - 40);
+  feed.y = clamp(feed.y, 40, WORLD_M - 40);
+  updateAltitude(feed, dt, avoidance);
+}
+
+function brakeAsset(feed, dt) {
+  const limits = kinematicLimits(feed);
+  feed.speed = approach(feed.speed, 0, limits.deceleration * dt);
+  const heading = (feed.heading * Math.PI) / 180;
+  feed.x += Math.cos(heading) * feed.speed * dt;
+  feed.y += Math.sin(heading) * feed.speed * dt;
+  feed.x = clamp(feed.x, 40, WORLD_M - 40);
+  feed.y = clamp(feed.y, 40, WORLD_M - 40);
+  updateAltitude(feed, dt, null);
+}
+
+function kinematicLimits(feed) {
+  if (feed.type === "fixed-wing") {
+    return {
+      acceleration: 7,
+      deceleration: 5,
+      turnRateRad: (48 * Math.PI) / 180,
+      climbRate: 5,
+    };
+  }
+  return {
+    acceleration: 11,
+    deceleration: 13,
+    turnRateRad: (118 * Math.PI) / 180,
+    climbRate: 9,
+  };
+}
+
+function targetCruiseSpeed(feed, distance) {
+  const cruise = feed.cruiseSpeed || feed.speed || 24;
+  if (feed.type === "fixed-wing") {
+    return Math.max(20, Math.min(cruise, distance * 0.18));
+  }
+  return Math.max(4, Math.min(cruise, distance * 0.22));
+}
+
+function updateAltitude(feed, dt, avoidance) {
+  const limits = kinematicLimits(feed);
+  const terrain = terrainHeightAt(feed.x, feed.y);
+  const patrolWave = Math.sin(simTime * 0.75 + feed.orbitPhase) * 5;
+  const avoidanceLift = avoidance ? 18 : 0;
+  const commandBias = feed.command === "return" ? -10 : feed.command === "overwatch" ? 16 : 0;
+  const targetAltitude = clamp(
+    terrain + (feed.cruiseAltitude || feed.z) + patrolWave + avoidanceLift + commandBias,
+    80,
+    280,
+  );
+  feed.z = approach(feed.z, targetAltitude, limits.climbRate * dt);
+}
+
+function approach(value, target, maxDelta) {
+  if (value < target) return Math.min(target, value + maxDelta);
+  return Math.max(target, value - maxDelta);
 }
 
 function bvhQuery(asset) {
   const hits = [];
+  const terrainClearance = asset.z - terrainHeightAt(asset.x, asset.y);
+  if (terrainClearance < 82) {
+    hits.push({
+      id: "terrain-clearance",
+      label: "terrain clearance",
+      kind: "terrain",
+      severity: "watch",
+      distance: Math.max(0, terrainClearance),
+      radius: 82,
+      x: asset.x,
+      y: asset.y,
+    });
+  }
   for (const hazard of hazards) {
     const distance = Math.hypot(asset.x - hazard.x, asset.y - hazard.y);
     if (distance < hazard.r + 90) {
       hits.push({ ...hazard, kind: "hazard", distance, radius: hazard.r });
     }
   }
-  for (const other of allAssets()) {
+  for (const other of allFeeds()) {
     if (other.id === asset.id) continue;
     const distance = Math.hypot(asset.x - other.x, asset.y - other.y);
     if (distance < 155) {
@@ -238,21 +379,21 @@ function buildBvhNodes() {
 
 function modeCopy() {
   return {
-    sync: commandQueue.length,
-    foundry: "Enterprise sync staged",
-    npu: "C2 local",
+    sync: stagedCommands.length,
+    watermark: syncWatermark,
+    npu: "fusion-local",
   };
 }
 
-function classifyFrame(drone, visible) {
+function classifyFrame(feed, visible) {
   if (visible.some((obj) => obj.threat === "critical")) {
     return [
-      ["restricted volume in POV", 0.92],
-      ["dense multi asset formation", 0.49],
+      ["restricted volume in view", 0.92],
+      ["dense multi-feed formation", 0.49],
       ["clear corridor", 0.06],
     ];
   }
-  if (drone.battery < 70) {
+  if (feed.battery < 70) {
     return [
       ["low power return corridor", 0.84],
       ["clear corridor", 0.33],
@@ -261,19 +402,19 @@ function classifyFrame(drone, visible) {
   }
   return [
     ["clear corridor", 0.88],
-    ["dense multi asset formation", 0.31],
+    ["dense multi-feed formation", 0.31],
     ["reduced visibility field conditions", 0.11],
   ];
 }
 
-function visibleObjects(drone) {
+function visibleObjects(feed) {
   const objects = [];
   const fov = Math.PI * 0.78;
-  const heading = (drone.heading * Math.PI) / 180;
-  for (const target of allAssets()) {
-    if (target.id === drone.id) continue;
-    const dx = target.x - drone.x;
-    const dy = target.y - drone.y;
+  const heading = (feed.heading * Math.PI) / 180;
+  for (const target of allFeeds()) {
+    if (target.id === feed.id) continue;
+    const dx = target.x - feed.x;
+    const dy = target.y - feed.y;
     const distance = Math.hypot(dx, dy);
     if (distance > 520) continue;
     const angle = Math.atan2(dy, dx);
@@ -283,7 +424,7 @@ function visibleObjects(drone) {
       ...target,
       range: Math.round(distance),
       screenX: 0.5 + delta / fov,
-      screenY: clamp(0.56 + (distance / 520) * 0.22 - (target.z - drone.z) / 260, 0.14, 0.88),
+      screenY: clamp(0.56 + (distance / 520) * 0.22 - (target.z - feed.z) / 260, 0.14, 0.88),
       threat: bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
         ? "critical"
         : "watch",
@@ -302,9 +443,21 @@ function worldToCanvas(asset, width, height) {
   return { x: (asset.x / WORLD_M) * width, y: (asset.y / WORLD_M) * height };
 }
 
+function terrainHeightAt(x, y) {
+  const ridge = Math.sin(x * 0.011 + y * 0.004) * 22;
+  const basin = Math.cos(x * 0.006 - y * 0.009) * 14;
+  const roughness = Math.sin((x + y) * 0.024) * 6;
+  return clamp(38 + ridge + basin + roughness, 4, 92);
+}
+
+function terrainTriangleCount() {
+  const cells = Math.ceil(WORLD_M / AOI_TILE.meshStepM);
+  return cells * cells * 2;
+}
+
 function drawTerrainBackdrop(ctx, width, height) {
   if (earthImagery.ready) {
-    drawImageCover(ctx, earthImagery.image, width, height);
+    drawEarthAoiTile(ctx, earthImagery.image, width, height);
     const shade = ctx.createLinearGradient(0, 0, width, height);
     shade.addColorStop(0, "rgba(6, 12, 14, 0.18)");
     shade.addColorStop(0.55, "rgba(19, 38, 31, 0.46)");
@@ -316,6 +469,8 @@ function drawTerrainBackdrop(ctx, width, height) {
   }
 
   drawContourOverlay(ctx, width, height);
+  drawTerrainMesh(ctx, width, height);
+  drawScaleBar(ctx, width, height);
 }
 
 function drawProceduralTerrain(ctx, width, height) {
@@ -355,6 +510,72 @@ function drawContourOverlay(ctx, width, height) {
     }
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function drawEarthAoiTile(ctx, image, width, height) {
+  const cropW = image.naturalWidth * AOI_TILE.cropScale;
+  const cropH = cropW * (height / width);
+  const sx = clamp(image.naturalWidth * AOI_TILE.cropX - cropW / 2, 0, image.naturalWidth - cropW);
+  const sy = clamp(image.naturalHeight * AOI_TILE.cropY - cropH / 2, 0, image.naturalHeight - cropH);
+  ctx.drawImage(image, sx, sy, cropW, cropH, 0, 0, width, height);
+}
+
+function projectTerrainPoint(x, y, width, height) {
+  const p = worldToCanvas({ x, y }, width, height);
+  return {
+    x: p.x,
+    y: p.y - terrainHeightAt(x, y) * 0.22,
+  };
+}
+
+function drawTerrainMesh(ctx, width, height) {
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = "rgba(245,241,232,0.13)";
+  ctx.lineWidth = 1;
+  for (let grid = 0; grid <= WORLD_M; grid += AOI_TILE.meshStepM) {
+    ctx.beginPath();
+    for (let x = 0; x <= WORLD_M; x += AOI_TILE.meshStepM / 2) {
+      const p = projectTerrainPoint(x, grid, width, height);
+      if (x === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    for (let y = 0; y <= WORLD_M; y += AOI_TILE.meshStepM / 2) {
+      const p = projectTerrainPoint(grid, y, width, height);
+      if (y === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawScaleBar(ctx, width, height) {
+  const scaleM = 250;
+  const barW = (scaleM / WORLD_M) * width;
+  const x = width - barW - 28;
+  const y = height - 28;
+  ctx.save();
+  ctx.strokeStyle = "rgba(245,241,232,0.82)";
+  ctx.fillStyle = "rgba(8,13,15,0.72)";
+  ctx.lineWidth = 2;
+  ctx.fillRect(x - 10, y - 22, barW + 20, 34);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + barW, y);
+  ctx.moveTo(x, y - 6);
+  ctx.lineTo(x, y + 6);
+  ctx.moveTo(x + barW, y - 6);
+  ctx.lineTo(x + barW, y + 6);
+  ctx.stroke();
+  ctx.fillStyle = "#f5f1e8";
+  ctx.font = "12px Inter, Arial";
+  ctx.fillText(`${scaleM} m`, x + barW / 2 - 18, y - 9);
+  ctx.fillText(AOI_TILE.label, x - 2, y + 22);
   ctx.restore();
 }
 
@@ -415,13 +636,13 @@ function drawSwarmMap() {
   }
 
   drawBase(ctx, width, height);
-  for (const drone of drones) {
-    drawPath(ctx, drone, width, height);
+  for (const feed of feeds) {
+    drawPath(ctx, feed, width, height);
   }
-  for (const asset of allAssets()) {
+  for (const asset of allFeeds()) {
     drawAsset(ctx, asset, width, height);
   }
-  drawRayFan(ctx, selectedDrone(), width, height);
+  drawRayFan(ctx, selectedFeed(), width, height);
 }
 
 function drawBase(ctx, width, height) {
@@ -433,14 +654,14 @@ function drawBase(ctx, width, height) {
   ctx.strokeRect(point.x - 12, point.y - 12, 24, 24);
   ctx.fillStyle = "#f2efe5";
   ctx.font = "12px Inter, Arial";
-  ctx.fillText("base", point.x + 16, point.y + 4);
+  ctx.fillText("fusion node", point.x + 16, point.y + 4);
 }
 
-function drawPath(ctx, drone, width, height) {
-  if (!drone.target) return;
-  const start = worldToCanvas(drone, width, height);
-  const end = worldToCanvas(drone.target, width, height);
-  ctx.strokeStyle = drone.id === selectedId ? "rgba(85, 214, 166, 0.64)" : "rgba(121, 184, 255, 0.22)";
+function drawPath(ctx, feed, width, height) {
+  if (!feed.target) return;
+  const start = worldToCanvas(feed, width, height);
+  const end = worldToCanvas(feed.target, width, height);
+  ctx.strokeStyle = feed.id === selectedId ? "rgba(85, 214, 166, 0.64)" : "rgba(121, 184, 255, 0.22)";
   ctx.setLineDash([5, 5]);
   ctx.beginPath();
   ctx.moveTo(start.x, start.y);
@@ -449,9 +670,9 @@ function drawPath(ctx, drone, width, height) {
   ctx.setLineDash([]);
 }
 
-function drawRayFan(ctx, drone, width, height) {
-  const origin = worldToCanvas(drone, width, height);
-  const heading = (drone.heading * Math.PI) / 180;
+function drawRayFan(ctx, feed, width, height) {
+  const origin = worldToCanvas(feed, width, height);
+  const heading = (feed.heading * Math.PI) / 180;
   ctx.strokeStyle = "rgba(85, 214, 166, 0.28)";
   ctx.lineWidth = 1;
   for (let i = -2; i <= 2; i += 1) {
@@ -496,7 +717,7 @@ function drawZone(ctx, x, y, radius, color, label) {
   ctx.fillText(label, x - radius + 10, y - radius + 18);
 }
 
-function drawPov(drone, visible) {
+function drawPov(feed, visible) {
   resizeCanvas(povCanvas);
   const width = povCanvas.width;
   const height = povCanvas.height;
@@ -562,7 +783,7 @@ function drawPov(drone, visible) {
   povCtx.fill();
 
   drawReticle(width, height);
-  drawPovTelemetry(drone, width, height);
+  drawPovTelemetry(feed, width, height);
   overlay.innerHTML = "";
 
   for (const obj of visible) {
@@ -607,26 +828,27 @@ function drawReticle(width, height) {
   povCtx.stroke();
 }
 
-function drawPovTelemetry(drone, width, height) {
+function drawPovTelemetry(feed, width, height) {
   povCtx.fillStyle = "rgba(10, 15, 18, 0.62)";
   povCtx.fillRect(18, 18, 230, 72);
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
-  povCtx.fillText(`${drone.callsign} ${drone.command.toUpperCase()}`, 32, 42);
-  povCtx.fillText(`HDG ${Math.round((drone.heading + 360) % 360)}  ALT ${Math.round(drone.z)}m`, 32, 66);
-  povCtx.fillText(`SPD ${Math.round(drone.speed)}m/s  BAT ${Math.round(drone.battery)}%`, 32, 88);
+  povCtx.fillText(`${feed.callsign} ${feed.command.toUpperCase()}`, 32, 42);
+  povCtx.fillText(`HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${Math.round(feed.z)}m`, 32, 66);
+  povCtx.fillText(`SPD ${Math.round(feed.speed)}m/s  BAT ${Math.round(feed.battery)}%`, 32, 88);
 }
 
-function renderAssets() {
-  document.querySelector("#asset-list").innerHTML = allAssets()
-    .map((asset) => {
-      const hit = bvhQuery(asset).find((item) => item.severity === "critical" && item.distance < item.radius);
-      const dotClass = hit ? "critical" : asset.battery < 70 ? "warn" : "";
-      const selected = asset.id === selectedId ? "selected" : "";
-      return `<button class="asset-row ${selected}" data-asset="${asset.id}">
+function renderFeeds() {
+  document.querySelector("#asset-list").innerHTML = allFeeds()
+    .map((feed) => {
+      const hit = bvhQuery(feed).find((item) => item.severity === "critical" && item.distance < item.radius);
+      const dotClass = hit ? "critical" : feed.battery < 70 ? "warn" : "";
+      const selected = feed.id === selectedId ? "selected" : "";
+      const latClass = feed.latency < 50 ? "good" : feed.latency < 100 ? "watch" : "critical";
+      return `<button class="asset-row ${selected}" data-feed="${feed.id}">
         <div>
-          <strong>${asset.callsign}</strong>
-          <div class="asset-meta">${asset.command} · ${Math.round(asset.z)}m · ${Math.round(asset.battery)}%</div>
+          <strong>${feed.callsign}</strong>
+          <div class="asset-meta">${feed.command} · ${Math.round(feed.z)}m · ${Math.round(feed.battery)}% · <span class="feed-latency ${latClass}" style="font-size:10px;padding:1px 5px">${feed.latency}ms</span></div>
         </div>
         <span class="asset-dot ${dotClass}"></span>
       </button>`;
@@ -634,21 +856,58 @@ function renderAssets() {
     .join("");
   document.querySelectorAll(".asset-row").forEach((row) => {
     row.addEventListener("click", () => {
-      selectedId = row.dataset.asset;
+      selectedId = row.dataset.feed;
       renderFrame();
     });
   });
 }
 
-function renderHardware(drone, hits) {
+function renderFeedQuality() {
+  const all = allFeeds();
+  const avgFresh = all.reduce((s, f) => s + f.freshness, 0) / all.length;
+  const freshnessLabel = avgFresh > 0.85 ? "fresh" : avgFresh > 0.6 ? "degraded" : "stale";
+  document.querySelector("#feed-count").textContent = `${feeds.length} feeds`;
+  document.querySelector("#feed-freshness").textContent = freshnessLabel;
+  document.querySelector("#spool-depth").textContent = `spool ${spoolDepth}`;
+
+  document.querySelector("#feed-quality").innerHTML = allFeeds()
+    .map((feed) => {
+      const freshPct = Math.round(feed.freshness * 100);
+      const confPct = Math.round(feed.confidence * 100);
+      const latClass = feed.latency < 50 ? "good" : feed.latency < 100 ? "watch" : "critical";
+      return `<div class="feed-row">
+        <div class="feed-header"><strong>${feed.callsign}</strong><span class="feed-latency ${latClass}">${feed.latency}ms</span></div>
+        <div class="feed-metrics">
+          <div class="metric-bar"><span class="metric-label">Fresh</span><div class="bar-track"><span class="bar-fill" style="width:${freshPct}%"></span></div></div>
+          <div class="metric-bar"><span class="metric-label">Conf</span><div class="bar-track"><span class="bar-fill" style="width:${confPct}%"></span></div></div>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderStagedPacket() {
+  const packetEl = document.querySelector("#staged-packet");
+  if (stagedCommands.length === 0) {
+    packetEl.innerHTML = '<div class="packet-empty subtle">No staged commands — local C2 issues commands directly</div>';
+    return;
+  }
+  packetEl.innerHTML = stagedCommands
+    .slice(0, 5)
+    .map((cmd) => `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${cmd.command.toUpperCase()}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`)
+    .join("");
+}
+
+function renderHardware(feed, hits) {
   const status = modeCopy();
   const bvhMs = rayPath === "rtx" ? 1.4 + hits.length * 0.16 : 8.8 + hits.length * 0.7;
   const rows = [
-    ["C2 authority", "operator tasking applies locally", "good"],
-    ["Earth imagery", earthImagery.ready ? "NASA Blue Marble cached" : "waiting for local cache", earthImagery.ready ? "good" : "watch"],
-    ["Collision BVH", rayPath === "rtx" ? "RT cores accelerate path checks" : "CPU parity path checks", rayPath === "rtx" ? "good" : "watch"],
-    ["Route solver", `${hits.length} obstacles · ${bvhMs.toFixed(1)} ms`, rayPath === "rtx" ? "good" : "watch"],
-    ["Mission cache", `${status.sync} staged events`, "local"],
+    ["Fusion authority", "laptop-local sensor fusion", "good"],
+    ["Earth AOI", earthImagery.ready ? "cached raster tile" : "procedural estimate", earthImagery.ready ? "good" : "watch"],
+    ["Terrain mesh", `${terrainTriangleCount()} triangles`, "good"],
+    ["Collision BVH", `${hits.length} checks · ${bvhMs.toFixed(1)}ms`, rayPath === "rtx" ? "good" : "watch"],
+    ["Spool buffer", `${spoolDepth} staged for gate`, spoolDepth > 0 ? "watch" : "good"],
+    ["Sync watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "watch" : "good"],
   ];
   document.querySelector("#hardware-list").innerHTML = rows
     .map(
@@ -656,15 +915,16 @@ function renderHardware(drone, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind}">${kind}</span></div>`,
     )
     .join("");
-  document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "collision BVH" : "CPU route check";
-  document.querySelector("#bvh-badge").textContent =
-    rayPath === "rtx" ? "Collision BVH active" : "CPU collision parity";
-  document.querySelector("#map-hud-copy").textContent =
+  setText("#bvh-label", rayPath === "rtx" ? "terrain BVH" : "CPU route check");
+  setText("#fusion-badge", rayPath === "rtx" ? "Terrain BVH active" : "CPU collision parity");
+  setText(
+    "#map-hud-copy",
     earthImagery.ready
-      ? "Cached Earth raster plus local collision/path solver"
-      : "Run scripts/cache_visual_assets.py to cache Earth imagery";
-  document.querySelector("#range-label").textContent = `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`;
-  document.querySelector("#pov-title").textContent = `${drone.callsign} POV`;
+      ? `${AOI_TILE.label}; terrain mesh feeds maneuver BVH`
+      : "Terrain from procedural estimate; awaiting cache",
+  );
+  setText("#range-label", `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`);
+  setText("#pov-title", `${feed.callsign} Feed`);
 }
 
 function renderVision(scores) {
@@ -676,65 +936,54 @@ function renderVision(scores) {
     .join("");
 }
 
-function renderAlerts(drone, hits, scores) {
+function renderAlerts(feed, hits, scores) {
   const alerts = [];
   const critical = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   if (critical) {
-    alerts.push(["critical", `${drone.callsign} inside ${critical.label}; route correction active`]);
+    alerts.push(["critical", `${feed.callsign} inside ${critical.label}; route correction active`]);
   } else if (scores[0][0] === "restricted volume in POV") {
-    alerts.push(["critical", "Restricted volume visible in POV"]);
+    alerts.push(["critical", "Restricted volume in view"]);
   }
-  alerts.push(["watch", "Offline C2 authority active; enterprise sync staged"]);
-  if (drone.battery < 70) alerts.push(["watch", `${drone.callsign} battery near return threshold`]);
-  if (alerts.length === 0) alerts.push(["watch", "Local BVH pass clear"]);
+  if (spoolDepth > 0) {
+    alerts.push(["watch", `${spoolDepth} commands queued for operator sync gate`]);
+  }
+  if (feed.battery < 70) alerts.push(["watch", `${feed.callsign} battery near return threshold`]);
+  if (alerts.length === 0) alerts.push(["watch", "Fusion node nominal"]);
   document.querySelector("#alert-list").innerHTML = alerts
     .map(([level, text]) => `<div class="alert-row ${level}">${text}</div>`)
     .join("");
 }
 
-function renderLog() {
-  document.querySelector("#mission-log").innerHTML = missionLog
-    .map((entry) => `<div class="log-row">${entry}</div>`)
-    .join("");
-}
-
-function renderCommandQueue() {
-  document.querySelector("#command-queue").innerHTML =
-    commandQueue.length === 0
-      ? '<div class="log-row">No operator commands issued.</div>'
-      : commandQueue
-          .map(
-            (cmd) =>
-              `<div class="log-row">${cmd.id} · ${cmd.callsign} · ${cmd.command.toUpperCase()} · ${cmd.status}</div>`,
-          )
-          .join("");
-}
-
 function updateModeChrome() {
   const status = modeCopy();
   const pill = document.querySelector("#mode-status");
-  pill.textContent = "OFFLINE FIELD NODE";
+  pill.textContent = "FUSION NODE AUTHORITY";
   pill.className = "mode-pill offline";
-  document.querySelector("#sync-count").textContent = String(status.sync);
-  document.querySelector("#foundry-status").textContent = status.foundry;
+  setText("#sync-count", String(status.sync));
+  setText("#sync-watermark", `watermark T+${status.watermark.toFixed(1)}s`);
+  setText("#clock-label", `T+${simTime.toFixed(1)}s`);
+  const syncPill = document.querySelector("#sync-state-pill");
+  if (syncPill) {
+    syncPill.textContent = spoolDepth > 0 ? `${spoolDepth} staged` : "sync idle";
+    syncPill.classList.toggle("staged", spoolDepth > 0);
+  }
 }
 
 function renderFrame() {
-  const drone = selectedDrone();
-  const visible = visibleObjects(drone);
-  const hits = bvhQuery(drone);
-  const scores = classifyFrame(drone, visible);
+  const feed = selectedFeed();
+  const visible = visibleObjects(feed);
+  const hits = bvhQuery(feed);
+  const scores = classifyFrame(feed, visible);
   drawSwarmMap();
-  drawPov(drone, visible);
-  renderAssets();
-  renderHardware(drone, hits);
+  drawPov(feed, visible);
+  renderFeeds();
+  renderFeedQuality();
+  renderStagedPacket();
+  renderHardware(feed, hits);
   renderVision(scores);
-  renderAlerts(drone, hits, scores);
-  renderLog();
-  renderCommandQueue();
+  renderAlerts(feed, hits, scores);
   updateModeChrome();
-  document.querySelector("#clock-label").textContent = `T+${simTime.toFixed(1)}s`;
-  document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "Local replay";
+  document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "One feed within fused multi-source view";
   document.querySelector("#field-condition-label").textContent = scores[0][0];
   document.querySelector("#npu-label").textContent = modeCopy().npu;
 }
@@ -756,12 +1005,28 @@ function wrapAngle(angle) {
 }
 
 function cycleSelected(offset) {
-  const assets = allAssets();
-  const current = Math.max(0, assets.findIndex((asset) => asset.id === selectedId));
-  const next = (current + offset + assets.length) % assets.length;
-  selectedId = assets[next].id;
-  pushLog(`POV switched to ${assets[next].callsign}.`);
+  const all = allFeeds();
+  const current = Math.max(0, all.findIndex((a) => a.id === selectedId));
+  const next = (current + offset + all.length) % all.length;
+  selectedId = all[next].id;
+  pushLog(`Selected feed switched to ${all[next].callsign}.`);
   renderFrame();
+}
+
+function triggerSync() {
+  if (stagedCommands.length === 0) {
+    pushLog("No staged commands to sync.");
+    return;
+  }
+  const count = stagedCommands.length;
+  stagedCommands.length = 0;
+  spoolDepth = 0;
+  syncStaged = false;
+  pushLog(`${count} commands released via operator sync gate.`);
+  document.querySelector("#sync-status").textContent = `Released ${count} commands at T+${simTime.toFixed(1)}s`;
+  setTimeout(() => {
+    document.querySelector("#sync-status").textContent = "No connection required for local operations";
+  }, 3000);
 }
 
 document.querySelector("#resume-mission").addEventListener("click", () => issueCommand("resume"));
@@ -769,6 +1034,7 @@ document.querySelector("#patrol-area").addEventListener("click", () => issueComm
 document.querySelector("#return-home").addEventListener("click", () => issueCommand("return"));
 document.querySelector("#hold-position").addEventListener("click", () => issueCommand("hold"));
 document.querySelector("#emergency-stop").addEventListener("click", () => issueCommand("abort"));
+document.querySelector("#sync-now").addEventListener("click", () => triggerSync());
 document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
 document.querySelector("#toggle-bvh").addEventListener("click", () => {
@@ -778,5 +1044,5 @@ document.querySelector("#toggle-bvh").addEventListener("click", () => {
   );
 });
 
-pushLog("Offline C2 node started; operator tasking and local mission cache active.");
+pushLog("Fusion node started; laptop-local authority active.");
 requestAnimationFrame(tick);

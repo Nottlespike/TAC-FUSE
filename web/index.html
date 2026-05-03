@@ -3,25 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAC-FUSE Field C2</title>
+    <title>TAC-FUSE · Fusion Node</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header class="topbar">
         <div class="brand">
             <strong>TAC-FUSE</strong>
-            <span id="mode-status" class="mode-pill offline">OFFLINE FIELD NODE</span>
+            <span id="mode-status" class="mode-pill offline">FUSION NODE AUTHORITY</span>
         </div>
-        <div class="capability-strip" aria-label="Local capability summary">
-            <span>Laptop fusion node</span>
-            <span>Earth imagery cache</span>
-            <span>Drone feeds</span>
-            <span>On-site state</span>
-            <span>Enterprise sync gated</span>
+        <div class="feed-summary" aria-label="Contributor feed summary">
+            <span class="feed-pill" id="feed-count">4 feeds</span>
+            <span class="feed-pill" id="feed-freshness">fresh</span>
+            <span class="feed-pill" id="spool-depth">spool 0</span>
+            <span class="feed-pill" id="sync-state-pill">sync idle</span>
         </div>
         <div class="top-metrics">
             <span><strong id="sync-count">0</strong> staged</span>
-            <span id="foundry-status">Enterprise sync staged</span>
+            <span id="sync-watermark" class="subtle">watermark T+0.0s</span>
             <span id="clock-label">T+0.0s</span>
         </div>
     </header>
@@ -30,29 +29,29 @@
         <section class="earth-pane">
             <div class="section-heading">
                 <div>
-                    <h1>Offline Theater</h1>
-                    <span class="subtle">Hardened laptop authority with cached maps and drone replay</span>
+                    <h1>Fused Theater</h1>
+                    <span class="subtle">Laptop authority · cached terrain + contributor feeds fused locally</span>
                 </div>
-                <span id="swarm-count" class="subtle">5 assets</span>
+                <span id="swarm-count" class="subtle">5 tracked</span>
             </div>
 
             <div class="swarm-map-shell">
                 <canvas id="swarm-map" class="earth-canvas" width="980" height="680"></canvas>
                 <div class="map-hud">
-                    <strong>EARTH IMAGERY</strong>
-                    <span id="map-hud-copy">Awaiting cached raster</span>
+                    <strong>FUSED STATE</strong>
+                    <span id="map-hud-copy">Local authority active</span>
                 </div>
-                <div class="map-badge" id="bvh-badge">Earth imagery pending</div>
+                <div class="map-badge" id="fusion-badge">Fusion active</div>
             </div>
 
             <div class="earth-footer">
                 <section class="panel">
-                    <h2>Assets</h2>
+                    <h2>Contributor Feeds</h2>
                     <div id="asset-list" class="asset-list"></div>
                 </section>
                 <section class="panel">
-                    <h2>Offline Command Queue</h2>
-                    <div id="command-queue" class="mission-log compact-log"></div>
+                    <h2>Maven/Foundry Mission Packet</h2>
+                    <div id="staged-packet" class="packet-list"></div>
                 </section>
             </div>
         </section>
@@ -60,12 +59,12 @@
         <section class="operator-pane">
             <div class="section-heading">
                 <div>
-                    <h1 id="pov-title">Alpha POV</h1>
-                    <span class="subtle" id="frame-counter">Local replay</span>
+                    <h1 id="pov-title">Alpha Feed</h1>
+                    <span class="subtle" id="frame-counter">One feed within fused multi-source view</span>
                 </div>
                 <div class="frame-controls">
-                    <button id="prev-frame" class="icon-btn" title="Previous frame">‹</button>
-                    <button id="next-frame" class="icon-btn" title="Next frame">›</button>
+                    <button id="prev-frame" class="icon-btn" title="Previous feed">‹</button>
+                    <button id="next-frame" class="icon-btn" title="Next feed">›</button>
                 </div>
             </div>
 
@@ -76,7 +75,7 @@
 
             <div class="operator-dock">
                 <section class="panel command-panel">
-                    <h2>C2</h2>
+                    <h2>Local C2</h2>
                     <div class="command-stack">
                         <button id="resume-mission" class="command-btn active">Resume</button>
                         <button id="patrol-area" class="command-btn">Patrol</button>
@@ -108,24 +107,15 @@
 
             <div class="right-grid">
                 <section class="panel">
-                    <h2>Mission State</h2>
-                    <div class="state-explainer">
-                        <div><strong>C2</strong><span>Operator commands apply locally.</span></div>
-                        <div><strong>Map</strong><span>Cached Earth imagery backs the theater view.</span></div>
-                        <div><strong>Solver</strong><span>BVH avoids collisions and optimizes routes.</span></div>
-                        <div><strong>Sync</strong><span>Enterprise packet waits for reconnect.</span></div>
-                    </div>
+                    <h2>Feed Quality</h2>
+                    <div id="feed-quality" class="feed-quality"></div>
                 </section>
                 <section class="panel">
-                    <h2>Sensor Cue</h2>
-                    <div class="vision-card">
-                        <span class="metric-label">Role</span>
-                        <strong>Optional local object cue</strong>
-                    </div>
+                    <h2>Scene Understanding</h2>
                     <div id="vision-scores" class="vision-scores"></div>
                 </section>
                 <section class="panel">
-                    <h2>Local Hardware</h2>
+                    <h2>Fusion Node Status</h2>
                     <div id="hardware-list" class="status-list"></div>
                 </section>
                 <section class="panel">
@@ -133,8 +123,12 @@
                     <div id="alert-list" class="alert-list"></div>
                 </section>
                 <section class="panel wide">
-                    <h2>Mission Log</h2>
-                    <div id="mission-log" class="mission-log"></div>
+                    <h2>Operator Sync Gate</h2>
+                    <div class="sync-gate">
+                        <p class="subtle">Staged packets await operator release. Reconnect upload is a gated sync action, not a live dependency.</p>
+                        <button id="sync-now" class="command-btn">Release Staged Packet</button>
+                        <div id="sync-status" class="sync-status subtle">No connection required for local operations</div>
+                    </div>
                 </section>
             </div>
         </section>

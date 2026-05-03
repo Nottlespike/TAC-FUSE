@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Problem Statement 2 self-improvement script that audits TAC-FUSE alignment
+  and generates scoped AlphaHENG task packs around local C2 continuity.
 - Maven Smart System / Foundry API configuration boundary (`tac_fuse.foundry`) with YAML + env-var loading, OAuth client-credentials support, token redaction, and a redacted env-check script. Tokens are never stored in git.
 - Deterministic sensor emulation module (`tac_fuse.sensors`) with EO/RGB camera, IR/thermal, depth/range, and GNSS/IMU emulators that produce `SensorObservation` objects with covariance/uncertainty metadata convertible to fusion bus `SensorEvent` envelopes.
 - Sensor degradation modeling for field conditions: haze, smoke, dust, rain, fog, low light, and occlusion modes affecting confidence, uncertainty, and quality scores.
@@ -23,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - RTX prerequisite script referenced by the live demo runbook.
 - Browser-based graphics emulator with a live swarm world, selected-drone POV, operator commands, online/offline queue behavior, BVH nodes, and local ray-query visualization.
 - Offline-first hackathon UI that foregrounds local C2, cached maps, drone tasking, sensor cues, SQLite persistence, and staged enterprise export without live/degraded mode controls.
+- Web demo reframed as laptop-local fused sensor array: fusion node is the authority (not cloud), drones shown as contributor feeds with freshness/confidence/latency, POV is one feed among several fused sources, staged Maven/Foundry mission packet shown, reconnect upload presented as operator-gated sync action (not live dependency), sync idle/staged pill in topbar, contributor feed latency badges inline, no empty-card placeholders, no tech-stack advertising in UI copy.
 - Foundry-compatible local export artifacts for mission events, asset states, tasks, alerts, and sync manifest.
 - Seeded restricted-zone entries, dashboard-state writes, and idempotent local persistence APIs for route conflicts and restricted entries.
 - Durable offline fusion spool (`tac_fuses.fusion_node.spool.FusionSpool`) with append-only event log (SQLite WAL + JSONL side-car), deterministic fused-state snapshots at configurable intervals, sync watermarks per contributor, upload receipt tracking, idempotency keys for reconnect dedup, corruption-tolerant JSONL read path that skips bad records by checksum, and redacted inspection output for operator debugging.
@@ -36,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reworked the browser emulator from a block/grid status dashboard into a more cinematic offline field-node theater with terrain styling, compact panels, and visible local hardware proof points.
 - Wired the browser theater to use the cached Earth imagery layer when present, with procedural terrain retained as the offline fallback.
 - Reframed BVH copy as collision prevention and route optimization, with ray-tracing cores shown as the acceleration path for local spatial queries.
+- Restyled the web demo UI as a laptop-local fusion node with contributor feeds (freshness/confidence/latency), selected feed as POV, feed quality panel, staged packet panel, sync watermark, and operator-gated upload button.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.
