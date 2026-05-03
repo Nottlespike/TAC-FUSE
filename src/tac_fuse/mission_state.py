@@ -1,4 +1,16 @@
-"""Local-first SQLite state store for TAC-FUSE."""
+"""Local-first SQLite state store for TAC-FUSE.
+
+LOCAL C2 STATE-FIRST GUARANTEE:
+Every operator tasking or retasking action persists to three artifacts
+atomically inside a single SQLite transaction:
+
+1. The state row in the relevant table (operator_tasks, asset_states, alerts, …)
+2. An audit-log entry attributing the command to the current operator
+3. A sync-queue entry for deferred enterprise handoff
+
+Any export or enterprise-sync path MAY call :func:`assert_command_proof_chain`
+to refuse inclusion of entities whose proof chains are incomplete.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +21,16 @@ from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+
+class StateFirstViolation(RuntimeError):
+    """Raised when an export path encounters data without complete state-first proofs.
+
+    Every operator command must produce three artifacts atomically before any
+    export can include the data: (1) persisted state row, (2) audit log entry,
+    (3) sync queue entry.  If any of these is missing, the export must refuse
+    to include the entity — local C2 authority requires complete proof chains.
+    """
 
 
 class MissionStateStore:
@@ -188,6 +210,48 @@ class MissionStateStore:
             )
             self._enqueue_sync("operator_task", task_id, "cancel", updated)
             self._audit("task_cancelled", "operator_task", task_id, f"Cancelled task {task_id}")
+        return updated
+
+    def complete_task(self, task_id: str) -> dict[str, Any]:
+        """Complete a task — a final state action that persists before export.
+
+        Follows the same state-first guarantee as create/update/cancel/retask:
+        state row, audit log entry, and sync queue entry are written in a single
+        atomic transaction before any export path can observe the result.
+
+        Raises:
+            KeyError: If the task does not exist.
+            ValueError: If the task is already cancelled.
+        """
+        current = self.get_task(task_id)
+        if current is None:
+            raise KeyError(task_id)
+        if current["status"] == "cancelled":
+            raise ValueError(f"Cannot complete cancelled task {task_id}")
+        updated = {**current, "status": "complete", "updated_at": self._utc_now()}
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE operator_tasks
+                SET title = ?, description = ?, status = ?, metadata = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    updated["title"],
+                    updated["description"],
+                    updated["status"],
+                    json.dumps(updated["metadata"], sort_keys=True),
+                    updated["updated_at"],
+                    task_id,
+                ),
+            )
+            self._enqueue_sync("operator_task", task_id, "complete", updated)
+            self._audit(
+                "task_completed",
+                "operator_task",
+                task_id,
+                f"Completed task {task_id}",
+            )
         return updated
 
     def retask(
@@ -625,6 +689,74 @@ class MissionStateStore:
             "total_audit_events": int(audit_total),
             "pending_sync_items": int(sync_pending),
         }
+
+    def verify_command_proof_chain(self) -> dict[str, Any]:
+        """Verify that every operator command in the store has a complete proof chain.
+
+        This is the aggregate gate for local C2 authority: checks that every
+        task has all three proofs (state + audit + sync) for every operation
+        that was applied to it.  The sync queue entries are cross-referenced
+        against the audit log to prove no command was silently dropped.
+
+        Returns:
+            A report with per-task proof status, total proven/unproven counts,
+            and a ``chain_complete`` flag that is True only when every task
+            has complete proofs.
+        """
+        tasks = self.list_tasks()
+        task_proofs: list[dict[str, Any]] = []
+        all_complete = True
+        proven = 0
+        unproven = 0
+
+        for task in tasks:
+            proof = self.verify_state_first("operator_task", task["id"])
+            entry = {
+                "task_id": task["id"],
+                "title": task["title"],
+                "status": task["status"],
+                "state_persisted": proof["state_persisted"],
+                "audit_logged": proof["audit_logged"],
+                "sync_enqueued": proof["sync_enqueued"],
+                "proof_complete": proof["proof_complete"],
+            }
+            task_proofs.append(entry)
+            if proof["proof_complete"]:
+                proven += 1
+            else:
+                all_complete = False
+                unproven += 1
+
+        return {
+            "chain_complete": all_complete,
+            "total_tasks": len(tasks),
+            "proven": proven,
+            "unproven": unproven,
+            "tasks": task_proofs,
+        }
+
+    def assert_command_proof_chain(self) -> dict[str, Any]:
+        """Raise :class:`StateFirstViolation` if any task lacks complete proofs.
+
+        This is the hard export gate: call before any enterprise-bound artifact
+        generation.  Returns the proof report on success so callers can attach
+        it to the export payload.
+
+        Raises:
+            StateFirstViolation: when one or more tasks have incomplete proofs.
+        """
+        report = self.verify_command_proof_chain()
+        if not report["chain_complete"]:
+            unproven_ids = [
+                t["task_id"] for t in report["tasks"] if not t["proof_complete"]
+            ]
+            raise StateFirstViolation(
+                f"Export blocked: {len(unproven_ids)} task(s) have incomplete "
+                f"state-first proofs: {unproven_ids}. Every operator command "
+                "must persist to local state, audit log, and sync queue "
+                "before any enterprise export can run."
+            )
+        return report
 
     def pending_sync_count(self) -> int:
         row = self._conn.execute(

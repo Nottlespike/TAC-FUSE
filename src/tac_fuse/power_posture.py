@@ -76,6 +76,81 @@ WORKLOAD_REGISTRY: dict[str, WorkloadClass] = {
     "enterprise_sync": WorkloadClass.REQUIRES_ONLINE,  # Upload requires ONLINE
 }
 
+# Latency budget per compute tier (milliseconds)
+# At FULL tier, local work should complete within 100 ms.
+# At REDUCED tier, thermal throttle allows up to 500 ms.
+# At MINIMAL tier, only critical work runs with generous budget.
+LATENCY_BUDGET_MS: dict[ComputeTier, float] = {
+    ComputeTier.FULL: 100.0,
+    ComputeTier.REDUCED: 500.0,
+    ComputeTier.MINIMAL: 1000.0,
+}
+
+# Rationale for workload safety during denied connectivity
+DENIED_CONNECTIVITY_RATIONALE: dict[str, str] = {
+    "local_c2": "State persists locally; no enterprise dependency",
+    "sensor_fusion": "Fuses local feeds; works without network",
+    "alerting": "Local alert rules; no upload needed",
+    "fusion_spool": "Append-only local log; offline by design",
+    "collision_bvh": "Local spatial queries; no network needed",
+    "drone_tasking": "Commands issued locally; queued for sync",
+    "foundry_export": "Deterministic export from local state",
+    "sensor_emulation": "Local compute emulation; no network needed",
+    "terrain_mesh": "Local terrain data; cached locally",
+    "earth_aoi_cache": "Cached imagery; works offline",
+    "enterprise_sync": "Requires network upload to Foundry/Maven",
+}
+
+
+@dataclass
+class LatencyBudget:
+    """Per-tier latency budget for local workloads.
+
+    Makes the fusion node's processing latency constraints visible
+    so the operator understands whether local workloads complete
+    within acceptable time bounds.
+    """
+
+    compute_tier: str
+    local_budget_ms: float
+    feed_latency_avg_ms: float
+    budget_remaining_ms: float
+    over_budget: bool
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
+class DeniedConnectivityGuide:
+    """Operator decision guide for denied-connectivity operations.
+
+    Explicitly lists what is safe and restricted when the fusion
+    node has no enterprise connectivity, with rationale and
+    recommended operator actions.
+    """
+
+    safe_workloads: list[str]
+    safe_rationale: dict[str, str]
+    restricted_workloads: list[str]
+    restricted_rationale: dict[str, str]
+    operator_actions: list[str]
+
+
+@dataclass
+class BatteryAssumption:
+    """Documented assumptions behind battery and runtime estimates.
+
+    Makes the power model transparent so operators can adjust
+    PowerPostureConfig for their specific deployment hardware.
+    """
+
+    laptop_battery_wh: float
+    avg_power_draw_w: float
+    drain_rate_pct_per_min: float
+    backpack_output_w: float
+    backpack_fuel_runtime_min: float
+    ac_mains_infinite: bool
+    notes: list[str] = field(default_factory=list)
+
 
 @dataclass
 class PowerPosture:
@@ -95,6 +170,9 @@ class PowerPosture:
     restricted_workloads: list[str]
     offline_safe_workloads: list[str]
     cpu_fallback: bool
+    latency_budget_ms: float
+    feed_latency_avg_ms: float
+    battery_assumption: str  # summary of assumptions
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -277,6 +355,7 @@ class PowerPostureManager:
         """Compute and return the current power/latency posture snapshot."""
         tier = self.compute_tier()
         safe, restricted, offline_safe = self._classify_workloads(tier)
+        latency_budget = self.get_latency_budget()
 
         notes = self._generate_notes(tier)
 
@@ -291,6 +370,9 @@ class PowerPostureManager:
             restricted_workloads=restricted,
             offline_safe_workloads=offline_safe,
             cpu_fallback=self._cpu_fallback,
+            latency_budget_ms=latency_budget.local_budget_ms,
+            feed_latency_avg_ms=latency_budget.feed_latency_avg_ms,
+            battery_assumption=self._battery_assumption_summary(),
             notes=notes,
         )
 
@@ -345,9 +427,132 @@ class PowerPostureManager:
         safe, _, _ = self._classify_workloads(tier)
         return workload_name in safe
 
+    def get_latency_budget(
+        self, feed_latency_avg_ms: float = 50.0
+    ) -> LatencyBudget:
+        """Compute the latency budget for local workloads.
+
+        Parameters
+        ----------
+        feed_latency_avg_ms : float
+            Average contributor feed latency in milliseconds.  Defaults
+            to 50 ms (typical local RF link).  The operator or telemetry
+            feed provides this value; it is not measured by this module.
+        """
+        tier = self.compute_tier()
+        local_budget = LATENCY_BUDGET_MS[tier]
+        remaining = max(0.0, local_budget - feed_latency_avg_ms)
+        over = remaining <= 0
+
+        notes: list[str] = []
+        if over:
+            notes.append(
+                f"Feed latency ({feed_latency_avg_ms:.0f} ms) exceeds "
+                f"{tier.value}-tier budget ({local_budget:.0f} ms)"
+            )
+        if tier == ComputeTier.REDUCED:
+            notes.append("Reduced tier: thermal throttle increases processing latency")
+        elif tier == ComputeTier.MINIMAL:
+            notes.append("Minimal tier: only critical workloads with generous budget")
+
+        return LatencyBudget(
+            compute_tier=tier.value,
+            local_budget_ms=local_budget,
+            feed_latency_avg_ms=feed_latency_avg_ms,
+            budget_remaining_ms=round(remaining, 1),
+            over_budget=over,
+            notes=notes,
+        )
+
+    def get_denied_connectivity_guide(self) -> DeniedConnectivityGuide:
+        """Build an operator decision guide for denied-connectivity ops.
+
+        This guide is intended for the operator runbook and the UI.
+        It answers: "What can I safely do when I have no enterprise
+        connectivity?"
+        """
+        tier = self.compute_tier()
+        safe, restricted, _ = self._classify_workloads(tier)
+
+        safe_rationale = {
+            name: DENIED_CONNECTIVITY_RATIONALE.get(name, "Safe during denied connectivity")
+            for name in safe
+        }
+        restricted_rationale = {
+            name: DENIED_CONNECTIVITY_RATIONALE.get(name, "Restricted during denied connectivity")
+            for name in restricted
+        }
+
+        actions: list[str] = []
+        if "enterprise_sync" in restricted:
+            actions.append("Sync queue holds staged commands for later upload")
+        if tier == ComputeTier.MINIMAL:
+            actions.append("Switch to backpack or AC to restore compute tier")
+            actions.append("Only C2, spool, and alerting remain active")
+        elif tier == ComputeTier.REDUCED:
+            actions.append("Heavy batch workloads paused; C2 and fusion active")
+        if self._connectivity_mode == "offline":
+            actions.append("Local C2 is the authority; all drone commands are local")
+        if "sensor_emulation" in restricted:
+            actions.append("Sensor emulation paused to conserve compute")
+
+        return DeniedConnectivityGuide(
+            safe_workloads=safe,
+            safe_rationale=safe_rationale,
+            restricted_workloads=restricted,
+            restricted_rationale=restricted_rationale,
+            operator_actions=actions,
+        )
+
+    def get_battery_assumption(self) -> BatteryAssumption:
+        """Return the documented assumptions behind runtime estimates.
+
+        These values match PowerPostureConfig defaults and are
+        operator-visible so they can tune the model for their
+        specific hardware (laptop model, backpack generator capacity).
+        """
+        cfg = self.config
+        notes: list[str] = []
+        notes.append(
+            f"Drain rate: {cfg.battery_drain_rate_full:.4f} %/min "
+            f"({cfg.battery_full_runtime_min:.0f} min at 100%)"
+        )
+        if self._power_source == PowerSource.BATTERY:
+            remaining = self.estimated_runtime_min()
+            if remaining < 30:
+                notes.append("URGENT: Switch to backpack generator or AC mains")
+            elif remaining < 60:
+                notes.append("Prepare alternate power source")
+        if self._power_source == PowerSource.BACKPACK_GENERATOR:
+            notes.append("Backpack assumed running with infinite fuel during mission")
+        if self._power_source == PowerSource.AC_MAINS:
+            notes.append("AC mains: no runtime constraint assumed")
+
+        return BatteryAssumption(
+            laptop_battery_wh=56.0,  # typical 14" laptop
+            avg_power_draw_w=56.0 / 3.0,  # ~18.7 W
+            drain_rate_pct_per_min=cfg.battery_drain_rate_full,
+            backpack_output_w=65.0,  # typical portable generator
+            backpack_fuel_runtime_min=cfg.backpack_runtime_min,
+            ac_mains_infinite=True,
+            notes=notes,
+        )
+
+    def _battery_assumption_summary(self) -> str:
+        """Short summary of battery assumptions for the posture snapshot."""
+        ba = self.get_battery_assumption()
+        return (
+            f"{ba.laptop_battery_wh:.0f} Wh · "
+            f"{ba.drain_rate_pct_per_min:.3f} %/min · "
+            f"backpack {ba.backpack_output_w:.0f} W"
+        )
+
     def get_runbook_summary(self) -> str:
         """Generate a runbook-visible text summary of the current posture."""
         posture = self.get_posture()
+        latency = self.get_latency_budget()
+        guide = self.get_denied_connectivity_guide()
+        battery = self.get_battery_assumption()
         lines = [
             "=== TAC-FUSE Power/Latency Posture ===",
             f"Power source:   {posture.power_source}",
@@ -357,6 +562,10 @@ class PowerPostureManager:
             f"Thermal:        {posture.thermal_headroom}",
             f"Connectivity:   {posture.connectivity_mode}",
             f"CPU fallback:   {'yes' if posture.cpu_fallback else 'no'}",
+            f"Latency budget: {latency.local_budget_ms:.0f} ms "
+            f"(feed avg {latency.feed_latency_avg_ms:.0f} ms, "
+            f"remaining {latency.budget_remaining_ms:.0f} ms)",
+            f"Battery model:  {posture.battery_assumption}",
             "",
             "Safe workloads:",
         ]
@@ -367,6 +576,30 @@ class PowerPostureManager:
             lines.append("Restricted workloads:")
             for w in posture.restricted_workloads:
                 lines.append(f"  - {w}")
+        lines.append("")
+        lines.append("Denied connectivity guide:")
+        lines.append("  Safe:")
+        for w in guide.safe_workloads:
+            rationale = guide.safe_rationale.get(w, "")
+            lines.append(f"    - {w}: {rationale}")
+        if guide.restricted_workloads:
+            lines.append("  Restricted:")
+            for w in guide.restricted_workloads:
+                rationale = guide.restricted_rationale.get(w, "")
+                lines.append(f"    - {w}: {rationale}")
+        if guide.operator_actions:
+            lines.append("  Operator actions:")
+            for action in guide.operator_actions:
+                lines.append(f"    - {action}")
+        lines.append("")
+        lines.append("Battery assumptions:")
+        lines.append(f"  Laptop battery:     {battery.laptop_battery_wh:.0f} Wh")
+        lines.append(f"  Avg power draw:     {battery.avg_power_draw_w:.1f} W")
+        lines.append(f"  Drain rate:         {battery.drain_rate_pct_per_min:.4f} %/min")
+        lines.append(f"  Backpack output:    {battery.backpack_output_w:.0f} W")
+        lines.append(f"  Backpack runtime:   {battery.backpack_fuel_runtime_min:.0f} min")
+        for note in battery.notes:
+            lines.append(f"  - {note}")
         if posture.notes:
             lines.append("")
             lines.append("Notes:")

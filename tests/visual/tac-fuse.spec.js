@@ -31,34 +31,37 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await page.goto(demoUrl);
   await page.waitForTimeout(900);
 
-  await expect(page.locator("#pov-title")).toContainText("3D Map Feed");
-  await expect(page.locator("#frame-counter")).toContainText("object map");
-  await expect(page.locator("#mode-status")).toContainText("FUSION NODE AUTHORITY");
-  await expect(page.locator("#npu-label")).toContainText("object pass");
-  await expect(page.locator("#npu-label")).not.toContainText(/Intel/i);
+  await expect(page.locator("#pov-title")).toContainText("3D Field View");
+  await expect(page.locator("#frame-counter")).toContainText("Field C2 View");
+  await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
+  await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
+  await expect(page.locator(".metric-strip")).toContainText("Power");
+  await expect(page.locator(".metric-strip")).toContainText("Sync");
+  await expect(page.locator(".metric-strip")).not.toContainText(/object pass|objects quantified|restricted object|CPU route check/i);
   await expect(page.locator("#asset-list .feed-latency").first()).toHaveText(/^\d{1,3} ms$/);
   await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
+  const labelCount = await page.locator(".target-label").count();
+  expect(labelCount).toBeGreaterThan(0);
+  expect(labelCount).toBeLessThanOrEqual(3);
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
   const targetClasses = (await page.locator(".target-label strong").allTextContents()).join(" ");
-  expect(targetClasses).toMatch(/wheeled vehicle|rf source|personnel|small UAS/);
+  expect(targetClasses).toMatch(/Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();
   const povBox = await page.locator(".pov-shell").boundingBox();
-  const lowerGridBox = await page.locator(".right-grid").boundingBox();
 
   expect(commandBox).not.toBeNull();
   expect(metricsBox).not.toBeNull();
   expect(povBox).not.toBeNull();
-  expect(lowerGridBox).not.toBeNull();
+  await expect(page.locator(".right-grid")).toBeHidden();
   expect(commandBox.width).toBeGreaterThan(520);
   expect(commandBox.height).toBeLessThan(90);
   expect(metricsBox.width).toBeGreaterThan(240);
   expect(metricsBox.height).toBeLessThan(82);
   expect(povBox.width).toBeGreaterThan(520);
-  expect(povBox.height).toBeGreaterThan(280);
-  expect(lowerGridBox.height).toBeGreaterThan(200);
+  expect(povBox.height).toBeGreaterThan(410);
 
   const first = await canvasHash(page, "#pov-canvas");
   await page.waitForTimeout(900);
@@ -69,7 +72,7 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(second.hash).not.toBe(first.hash);
 
   await page.locator("#mode-degraded").click();
-  await expect(page.locator("#mode-status")).toContainText("LOCAL C2 ACTIVE");
+  await expect(page.locator("#mode-status")).toContainText("Local C2 Active");
   await expect(page.locator("#mode-degraded")).toHaveClass(/active/);
 
   await page.screenshot({

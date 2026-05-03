@@ -335,7 +335,9 @@ class AlertingEngine:
                 dedup_key = f"degraded:{asset_id or 'unknown'}:{degradation}"
                 if not self._is_duplicate(dedup_key):
                     triggered.append(
-                        self._create_sensor_degraded_alert(asset_id, sensor_id, degradation, quality)
+                        self._create_sensor_degraded_alert(
+                            asset_id, sensor_id, degradation, quality
+                        )
                     )
                     self._record_dedup(dedup_key)
 
@@ -435,11 +437,9 @@ class AlertingEngine:
         distance = (delta_north**2 + delta_east**2) ** 0.5
 
         if distance <= zone_radius_m:
-            alert = self._create_position_breach_alert(
+            return self._create_position_breach_alert(
                 asset_id, zone_id, distance, lat, lon, zone_radius_m
             )
-            self._add_alert(alert)
-            return alert
 
         return None
 
@@ -469,14 +469,12 @@ class AlertingEngine:
         distance = (delta_north**2 + delta_east**2) ** 0.5
 
         if distance <= conflict_range_m:
-            alert = self._create_route_conflict_alert(
+            return self._create_route_conflict_alert(
                 asset_a_id,
                 asset_b_id,
                 distance,
                 conflict_range_m,
             )
-            self._add_alert(alert)
-            return alert
 
         return None
 

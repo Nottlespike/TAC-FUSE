@@ -1,4 +1,4 @@
-from tac_fuse.foundry_export import build_foundry_export
+from tac_fuse.foundry_export import build_foundry_export, verify_export_readiness
 from tac_fuse.mission_state import MissionStateStore
 from tac_fuse.replay import SeededReplayEngine, generate_scenario
 
@@ -226,3 +226,183 @@ def test_local_c2_state_first_proof_path() -> None:
     export2 = build_foundry_export(store)
     assert export["operator_tasks"] == export2["operator_tasks"]
     assert export["sync_queue"] == export2["sync_queue"]
+
+
+def test_complete_task_state_first() -> None:
+    """Prove complete_task (a final-state retasking action) persists to local state,
+    audit log, and sync queue BEFORE any enterprise export can run.
+    """
+    store = MissionStateStore(operator="complete_test_operator")
+
+    task = store.create_task(title="Scout sector 7")
+    completed = store.complete_task(task["id"])
+
+    # Verify state persistence
+    assert completed["status"] == "complete"
+    persisted = store.get_task(task["id"])
+    assert persisted is not None
+    assert persisted["status"] == "complete"
+
+    # Verify audit log
+    audit_events = store.list_audit_events()
+    assert any(e["event_type"] == "task_completed" for e in audit_events)
+
+    # Verify sync queue
+    sync_queue = store.list_sync_queue()
+    assert len(sync_queue) == 2  # create + complete
+    complete_entry = [e for e in sync_queue if e["operation"] == "complete"][0]
+    assert complete_entry["entity_type"] == "operator_task"
+
+    # Verify complete proofs for both operations
+    proof = store.verify_state_first("operator_task", task["id"])
+    assert proof["proof_complete"] is True
+
+
+def test_retask_state_first() -> None:
+    """Prove retask persists all three proofs BEFORE any enterprise export can run."""
+    store = MissionStateStore(operator="retask_test_operator")
+
+    task = store.create_task(title="Initial patrol")
+    retasked = store.retask(
+        task["id"],
+        title="Updated patrol",
+        description="Expanded scope",
+        metadata={"retask_count": 1},
+    )
+
+    # Verify state persistence
+    assert retasked["title"] == "Updated patrol"
+    assert retasked["description"] == "Expanded scope"
+    persisted = store.get_task(task["id"])
+    assert persisted is not None
+    assert persisted["title"] == "Updated patrol"
+
+    # Verify audit log
+    audit_events = store.list_audit_events()
+    assert any(e["event_type"] == "task_retasked" for e in audit_events)
+    assert any("Updated patrol" in e["message"] for e in audit_events)
+
+    # Verify sync queue
+    sync_queue = store.list_sync_queue()
+    retask_entry = [e for e in sync_queue if e["operation"] == "retask"][0]
+    assert retask_entry["entity_type"] == "operator_task"
+
+    # Verify complete proof
+    proof = store.verify_state_first("operator_task", task["id"])
+    assert proof["proof_complete"] is True
+
+
+def test_dispatch_command_state_first() -> None:
+    """Prove dispatch_command (the authoritative C2 entry point) persists all three
+    proofs BEFORE any enterprise export can run.
+    """
+    store = MissionStateStore(operator="dispatch_test_operator")
+
+    task = store.dispatch_command(
+        "patrol",
+        asset_id="uav-alpha",
+        title="Patrol east corridor",
+        description="Investigate RF pocket",
+    )
+
+    # Verify state persistence
+    assert task["title"] == "Patrol east corridor"
+    assert task["status"] == "in_progress"
+    persisted = store.get_task(task["id"])
+    assert persisted is not None
+    assert persisted["metadata"]["command"] == "patrol"
+    assert persisted["metadata"]["asset_id"] == "uav-alpha"
+
+    # Verify audit log
+    audit_events = store.list_audit_events()
+    assert any("Patrol east corridor" in e["message"] for e in audit_events)
+    assert any("created" in e["message"].lower() for e in audit_events)
+
+    # Verify sync queue
+    sync_queue = store.list_sync_queue()
+    assert len(sync_queue) == 1
+    assert sync_queue[0]["operation"] == "create"
+    assert sync_queue[0]["entity_type"] == "operator_task"
+
+    # Verify complete proof
+    proof = store.verify_state_first("operator_task", task["id"])
+    assert proof["state_persisted"] is True
+    assert proof["audit_logged"] is True
+    assert proof["sync_enqueued"] is True
+    assert proof["proof_complete"] is True
+
+    # Export works offline (no network)
+    export = build_foundry_export(store)
+    assert len(export["operator_tasks"]) == 1
+    assert export["operator_tasks"][0]["title"] == "Patrol east corridor"
+
+
+def test_assert_command_proof_chain() -> None:
+    """Prove assert_command_proof_chain is the hard export gate — raises on incomplete
+    proofs and returns the report when all tasks are proven.
+    """
+    store = MissionStateStore(operator="gate_test_operator")
+
+    # Empty store passes (no tasks = nothing to prove)
+    report = store.assert_command_proof_chain()
+    assert report["chain_complete"] is True
+
+    # Create one task — passes
+    task = store.create_task(title="Gate test task")
+    report = store.assert_command_proof_chain()
+    assert report["chain_complete"] is True
+    assert report["total_tasks"] == 1
+    assert report["proven"] == 1
+
+    # update_task adds another sync entry — still passes
+    store.update_task(task["id"], status="in_progress")
+    report = store.assert_command_proof_chain()
+    assert report["chain_complete"] is True
+
+    # verify_export_readiness returns same info without raising
+    readiness = verify_export_readiness(store)
+    assert readiness["ready"] is True
+    assert readiness["proven"] == 1
+
+
+def test_state_first_all_operation_types() -> None:
+    """Prove every operator-task operation type (create, update, cancel, retask, complete,
+    dispatch_command) produces a complete state-first proof chain.
+    """
+    store = MissionStateStore(operator="all_ops_test")
+
+    # create
+    task = store.create_task(title="Initial task")
+    # update
+    store.update_task(task["id"], status="in_progress")
+    # cancel (new task)
+    task2 = store.create_task(title="Task to cancel")
+    store.cancel_task(task2["id"])
+    # retask (new task)
+    task3 = store.create_task(title="Task to retask")
+    store.retask(task3["id"], title="Retasked task", metadata={"retasked": True})
+    # complete (new task)
+    task4 = store.create_task(title="Task to complete")
+    store.complete_task(task4["id"])
+    # dispatch_command
+    store.dispatch_command("hold", asset_id="uav-bravo")
+
+    # Verify aggregate proof summary
+    summary = store.state_proof_summary()
+    assert summary["entities"]["operator_task"]["total"] == 5
+    assert summary["entities"]["operator_task"]["proven"] == 5
+    # create + update + cancel + retask + complete + dispatch
+    assert summary["total_audit_events"] >= 6
+
+    # Hard gate passes — all tasks complete
+    report = store.assert_command_proof_chain()
+    assert report["chain_complete"] is True
+    assert report["total_tasks"] == 5
+    assert report["proven"] == 5
+    assert report["unproven"] == 0
+
+    # Export reads from local state only
+    export = build_foundry_export(store)
+    assert len(export["operator_tasks"]) == 5
+    assert len(export["mission_events"]) >= 6
+    assert len(export["sync_queue"]) >= 6  # at least one per task operation

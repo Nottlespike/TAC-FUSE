@@ -10,22 +10,22 @@
     <header class="topbar">
         <div class="brand">
             <strong>TAC-FUSE</strong>
-            <span id="mode-status" class="mode-pill offline">FUSION NODE AUTHORITY</span>
+            <span id="mode-status" class="mode-pill offline">Fusion Node Authority</span>
         </div>
         <div class="connectivity-switcher" aria-label="Connectivity mode control">
-            <button id="mode-offline" data-mode="offline" class="conn-btn active" title="OFFLINE: Local C2 only, no enterprise sync">OFFLINE</button>
-            <button id="mode-degraded" data-mode="degraded" class="conn-btn" title="DEGRADED: Local C2, sensor fusion active, queued sync">DEGRADED</button>
-            <button id="mode-online" data-mode="online" class="conn-btn" title="ONLINE: Enterprise sync enabled">ONLINE</button>
+            <button id="mode-offline" data-mode="offline" class="conn-btn active" title="Offline: Local C2 Only, No Enterprise Sync">Offline</button>
+            <button id="mode-degraded" data-mode="degraded" class="conn-btn" title="Degraded: Local C2, Sensor Fusion Active, Queued Sync">Degraded</button>
+            <button id="mode-online" data-mode="online" class="conn-btn" title="Online: Enterprise Sync Enabled">Online</button>
         </div>
         <div class="feed-summary" aria-label="Contributor feed summary">
-            <span class="feed-pill" id="feed-count">4 feeds</span>
-            <span class="feed-pill" id="feed-freshness">fresh</span>
-            <span class="feed-pill" id="spool-depth">spool 0</span>
-            <span class="feed-pill" id="sync-state-pill">sync idle</span>
+            <span class="feed-pill" id="feed-count">4 Feeds</span>
+            <span class="feed-pill" id="feed-freshness">Fresh</span>
+            <span class="feed-pill" id="spool-depth">Spool 0</span>
+            <span class="feed-pill" id="sync-state-pill">Sync Idle</span>
         </div>
         <div class="top-metrics">
-            <span><strong id="sync-count">0</strong> staged</span>
-            <span id="sync-watermark" class="subtle">watermark T+0.0s</span>
+            <span><strong id="sync-count">0</strong> Staged</span>
+            <span id="sync-watermark" class="subtle">Watermark T+0.0s</span>
             <span id="clock-label">T+0.0s</span>
         </div>
     </header>
@@ -35,18 +35,18 @@
             <div class="section-heading">
                 <div>
                     <h1>Fused Theater</h1>
-                    <span class="subtle">Laptop authority · cached terrain + contributor feeds fused locally</span>
+                    <span class="subtle">Laptop Authority · 1.2 km Local AOI + Contributor Feeds Fused Locally</span>
                 </div>
-                <span id="swarm-count" class="subtle">5 tracked</span>
+                <span id="swarm-count" class="subtle">5 Tracked</span>
             </div>
 
             <div class="swarm-map-shell">
                 <canvas id="swarm-map" class="earth-canvas" width="980" height="680"></canvas>
                 <div class="map-hud">
-                    <strong>FUSED STATE</strong>
-                    <span id="map-hud-copy">Local authority active</span>
+                    <strong>Fused State</strong>
+                    <span id="map-hud-copy">Local Authority Active</span>
                 </div>
-                <div class="map-badge" id="fusion-badge">Fusion active</div>
+                <div class="map-badge" id="fusion-badge">Fusion Active</div>
             </div>
 
             <div class="earth-footer">
@@ -64,8 +64,8 @@
         <section class="operator-pane">
             <div class="section-heading">
                 <div>
-                    <h1 id="pov-title">Alpha 3D Map Feed</h1>
-                    <span class="subtle" id="frame-counter">Quantified object map from fused contributor feeds</span>
+                    <h1 id="pov-title">Alpha 3D Field View</h1>
+                    <span class="subtle" id="frame-counter">3D Field C2 View With Priority Contacts</span>
                 </div>
                 <div class="frame-controls">
                     <button id="prev-frame" class="icon-btn" title="Previous feed">‹</button>
@@ -92,20 +92,20 @@
                 </section>
                 <div class="metric-strip">
                     <div>
-                        <span class="metric-label">Range</span>
+                        <span class="metric-label">Route</span>
                         <strong id="range-label">650 m</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Solver</span>
-                        <strong id="bvh-label">Geometry</strong>
+                        <span class="metric-label">Guard</span>
+                        <strong id="bvh-label">Monitoring</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Objects</span>
-                        <strong id="field-condition-label">objects quantified</strong>
+                        <span class="metric-label">Power</span>
+                        <strong id="power-posture-label">FULL · 100%</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Detector</span>
-                        <strong id="npu-label">object pass</strong>
+                        <span class="metric-label">Sync</span>
+                        <strong id="sync-gate-label">Closed Local</strong>
                     </div>
                 </div>
             </div>
@@ -131,6 +131,11 @@
                             <button id="power-backpack" data-source="backpack_generator" class="power-btn" title="Backpack generator active">Backpack</button>
                             <button id="power-ac" data-source="ac_mains" class="power-btn" title="AC mains power">AC Mains</button>
                         </div>
+                        <div class="battery-slider-row">
+                            <span class="metric-label">Battery Level</span>
+                            <input type="range" id="battery-slider" min="0" max="100" value="100" title="Adjust laptop battery level" />
+                            <span id="battery-slider-pct" class="slider-pct">100%</span>
+                        </div>
                         <div class="posture-metrics">
                             <div class="posture-metric">
                                 <span class="metric-label">Battery</span>
@@ -147,7 +152,7 @@
                             </div>
                             <div class="posture-metric">
                                 <span class="metric-label">Thermal</span>
-                                <strong id="posture-thermal">nominal</strong>
+                                <strong id="posture-thermal">Nominal</strong>
                             </div>
                             <div class="posture-metric">
                                 <span class="metric-label">Fallback</span>
@@ -165,9 +170,9 @@
                 <section class="panel wide">
                     <h2>Operator Sync Gate</h2>
                     <div class="sync-gate">
-                        <p class="subtle">Staged packets await operator release. Reconnect upload is a gated sync action, not a live dependency.</p>
+                        <p class="subtle">Staged Packets Await Operator Release. Reconnect Upload Is A Gated Sync Action, Not A Live Dependency.</p>
                         <button id="sync-now" class="command-btn">Release Staged Packet</button>
-                        <div id="sync-status" class="sync-status subtle">No connection required for local operations</div>
+                        <div id="sync-status" class="sync-status subtle">No Connection Required For Local Operations</div>
                     </div>
                 </section>
                 <section class="panel wide">

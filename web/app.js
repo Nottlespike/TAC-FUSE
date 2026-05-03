@@ -1,4 +1,5 @@
 const WORLD_M = 1200;
+const MAX_VISIBLE_DETECTION_LABELS = 3;
 const AOI_TILE = {
   label: "1.2 km local AOI",
   cropX: 0.31,
@@ -28,9 +29,18 @@ const earthImagery = {
 };
 
 const hazards = [
-  { id: "rf-denial-east", label: "RF denial", x: 610, y: 360, r: 105, severity: "critical" },
-  { id: "return-corridor", label: "return corridor", x: 330, y: 790, r: 95, severity: "watch" },
-  { id: "terrain-mask", label: "terrain mask", x: 760, y: 650, r: 82, severity: "watch" },
+  { id: "rf-denial-east", label: "RF Denial", x: 610, y: 360, r: 105, severity: "critical" },
+  { id: "return-corridor", label: "Return Corridor", x: 330, y: 790, r: 95, severity: "watch" },
+  { id: "terrain-mask", label: "Terrain Mask", x: 760, y: 650, r: 82, severity: "watch" },
+];
+const ROUTE_GUARD_HALF_WIDTH_M = 44;
+const ROUTE_GUARD_PATH = [
+  { x: 65, y: 990 },
+  { x: 255, y: 845 },
+  { x: 455, y: 705 },
+  { x: 695, y: 650 },
+  { x: 950, y: 535 },
+  { x: 1138, y: 450 },
 ];
 
 // Contributor feeds to the fusion node - each has freshness/confidence/latency
@@ -144,6 +154,8 @@ const sceneClassTargets = [
     y: 486,
     z: 7,
     heading: 18,
+    speed: 7,
+    routeIndex: 4,
     freshness: 0.9,
     confidence: 0.78,
     latency: 58,
@@ -157,6 +169,8 @@ const sceneClassTargets = [
     y: 356,
     z: 5,
     heading: 0,
+    speed: 1.1,
+    driftPhase: 0.4,
     freshness: 0.84,
     confidence: 0.7,
     latency: 66,
@@ -170,6 +184,13 @@ const sceneClassTargets = [
     y: 620,
     z: 3,
     heading: 0,
+    speed: 1.4,
+    patrolIndex: 1,
+    patrolPath: [
+      { x: 744, y: 620 },
+      { x: 690, y: 665 },
+      { x: 625, y: 636 },
+    ],
     freshness: 0.87,
     confidence: 0.73,
     latency: 63,
@@ -183,6 +204,10 @@ const sceneClassTargets = [
     y: 560,
     z: 72,
     heading: 82,
+    speed: 17,
+    orbitCenter: { x: 420, y: 560 },
+    orbitRadius: 88,
+    orbitPhase: 0.8,
     freshness: 0.76,
     confidence: 0.64,
     latency: 71,
@@ -201,6 +226,14 @@ const missionLog = [];
 let spoolDepth = 0;         // offline spool buffer depth
 let syncWatermark = 0;      // timestamp of last staged sync
 let syncStaged = false;     // whether a packet is staged for gate
+
+// Swarm-wide tasking state — single-operator C2 proof
+// Tracks operator commands across all drones for the denied-ops proof path
+const swarmTasking = {
+  lastCommand: {},   // assetId -> { command, ts }
+  history: [],       // array of { assetId, callsign, command, ts }
+  retaskCount: 0,
+};
 
 // Power posture state — mirrors tac_fuse.power_posture
 let powerSource = "battery";        // battery | backpack_generator | ac_mains
@@ -270,27 +303,27 @@ function computePosture() {
   // Notes
   const notes = [];
   if (powerSource === "battery") {
-    if (runtimeMin < 30) notes.push({ text: `BATTERY CRITICAL: ~${Math.round(runtimeMin)} min — switch to backpack or AC`, level: "critical" });
-    else if (runtimeMin < 60) notes.push({ text: `BATTERY LOW: ~${Math.round(runtimeMin)} min remaining`, level: "warn" });
-    else notes.push({ text: `Battery: ~${Math.round(runtimeMin)} min estimated runtime`, level: "" });
+    if (runtimeMin < 30) notes.push({ text: `Battery Critical: ~${Math.round(runtimeMin)} Min — Switch To Backpack Or AC`, level: "critical" });
+    else if (runtimeMin < 60) notes.push({ text: `Battery Low: ~${Math.round(runtimeMin)} Min Remaining`, level: "warn" });
+    else notes.push({ text: `Battery: ~${Math.round(runtimeMin)} Min Estimated Runtime`, level: "" });
   } else if (powerSource === "backpack_generator") {
-    notes.push({ text: "Backpack generator active — extended runtime", level: "" });
+    notes.push({ text: "Backpack Generator Active — Extended Runtime", level: "" });
   } else {
-    notes.push({ text: "AC mains — no runtime constraint", level: "" });
+    notes.push({ text: "AC Mains — No Runtime Constraint", level: "" });
   }
-  if (tier === "minimal") notes.push({ text: "MINIMAL: only C2, spool, alerting active", level: "critical" });
-  else if (tier === "reduced") notes.push({ text: "REDUCED: heavy batch workloads paused", level: "warn" });
-  if (thermal === "hot") notes.push({ text: "Thermal throttle: CPU load elevated", level: "warn" });
-  if (connectivityMode === "offline") notes.push({ text: "OFFLINE: enterprise sync blocked, local C2 is authority", level: "" });
-  else if (connectivityMode === "degraded") notes.push({ text: "DEGRADED: sync queued, awaiting connectivity", level: "" });
+  if (tier === "minimal") notes.push({ text: "Minimal: Only C2, Spool, Alerting Active", level: "critical" });
+  else if (tier === "reduced") notes.push({ text: "Reduced: Heavy Batch Workloads Paused", level: "warn" });
+  if (thermal === "hot") notes.push({ text: "Thermal Throttle: CPU Load Elevated", level: "warn" });
+  if (connectivityMode === "offline") notes.push({ text: "Offline: Enterprise Sync Blocked, Local C2 Is Authority", level: "" });
+  else if (connectivityMode === "degraded") notes.push({ text: "Degraded: Sync Queued, Awaiting Connectivity", level: "" });
 
   return { tier, thermal, runtimeMin, safe, restricted, notes };
 }
 
 const CONNECTIVITY_LABELS = {
-  offline: "FUSION NODE AUTHORITY",
-  degraded: "LOCAL C2 ACTIVE",
-  online: "ENTERPRISE SYNC ENABLED",
+  offline: "Fusion Node Authority",
+  degraded: "Local C2 Active",
+  online: "Enterprise Sync Enabled",
 };
 const CONNECTIVITY_CLASSES = {
   offline: "offline",
@@ -325,6 +358,29 @@ function formatLatencyMs(latencyMs) {
 
 function formatMeters(meters) {
   return `${Math.round(meters).toLocaleString()} m`;
+}
+
+function displayCommand(command) {
+  const labels = {
+    abort: "Abort",
+    hold: "Hold",
+    overwatch: "Overwatch",
+    patrol: "Patrol",
+    relay: "Relay",
+    resume: "Resume",
+    return: "Return",
+    scout: "Scout",
+  };
+  return labels[command] || command;
+}
+
+function displayTier(tier) {
+  const labels = {
+    full: "Full",
+    minimal: "Minimal",
+    reduced: "Reduced",
+  };
+  return labels[tier] || tier;
 }
 
 earthImagery.image.onload = () => {
@@ -367,6 +423,15 @@ function issueCommand(command) {
   stagedCommands.unshift(record);
   stagedCommands.splice(12);
 
+  // Swarm tasking: track last command per drone and detect retasking
+  const prevCommand = swarmTasking.lastCommand[feed.id];
+  if (prevCommand && prevCommand.command !== command) {
+    swarmTasking.retaskCount += 1;
+  }
+  swarmTasking.lastCommand[feed.id] = { command, ts: simTime };
+  swarmTasking.history.unshift({ assetId: feed.id, callsign: feed.callsign, command, ts: simTime });
+  swarmTasking.history.splice(20); // keep last 20 entries
+
   spoolDepth = stagedCommands.length;
   syncStaged = spoolDepth > 0;
   if (syncStaged) {
@@ -388,12 +453,73 @@ function issueCommand(command) {
   } else if (command === "resume") {
     feed.command = "patrol";
   }
-  pushLog(`${record.callsign} ${command.toUpperCase()} staged for sync.`);
+  pushLog(`${record.callsign} ${displayCommand(command)} Staged For Sync.`);
+}
+
+function movePlanarActor(actor, target, dt, cruiseSpeed, turnRateDeg) {
+  const dx = target.x - actor.x;
+  const dy = target.y - actor.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance < 1) {
+    actor.speed = approach(actor.speed || 0, 0, cruiseSpeed * dt);
+    return distance;
+  }
+  const desiredHeading = Math.atan2(dy, dx);
+  const currentHeading = (actor.heading * Math.PI) / 180;
+  const maxTurn = ((turnRateDeg * Math.PI) / 180) * dt;
+  const nextHeading = currentHeading + clamp(wrapAngle(desiredHeading - currentHeading), -maxTurn, maxTurn);
+  actor.speed = approach(actor.speed || 0, cruiseSpeed, cruiseSpeed * 0.45 * dt);
+  const step = Math.min(distance, actor.speed * dt);
+  actor.x = clamp(actor.x + Math.cos(nextHeading) * step, 30, WORLD_M - 30);
+  actor.y = clamp(actor.y + Math.sin(nextHeading) * step, 30, WORLD_M - 30);
+  actor.heading = (nextHeading * 180) / Math.PI;
+  return distance;
+}
+
+function updateFieldContacts(dt) {
+  for (const target of sceneClassTargets) {
+    target.freshness = clamp(target.freshness + Math.sin(simTime * 0.42 + target.x * 0.01) * 0.002, 0.62, 0.98);
+    target.confidence = clamp(target.confidence + Math.cos(simTime * 0.36 + target.y * 0.01) * 0.002, 0.45, 0.92);
+    target.latency = clamp(target.latency + Math.sin(simTime * 0.7 + target.heading) * 0.8, 24, 180);
+
+    if (target.type === "vehicle") {
+      const nextIndex = target.routeIndex ?? 0;
+      const distance = movePlanarActor(target, ROUTE_GUARD_PATH[nextIndex], dt, 7, 42);
+      if (distance < 24) {
+        target.routeIndex = (nextIndex + 1) % ROUTE_GUARD_PATH.length;
+      }
+      target.z = terrainHeightAt(target.x, target.y) + 4;
+    } else if (target.type === "rf-source") {
+      target.originX ??= target.x;
+      target.originY ??= target.y;
+      target.driftPhase = (target.driftPhase || 0) + dt * 0.22;
+      target.x = clamp(target.originX + Math.cos(target.driftPhase) * 18, 30, WORLD_M - 30);
+      target.y = clamp(target.originY + Math.sin(target.driftPhase * 0.7) * 12, 30, WORLD_M - 30);
+      target.heading = (target.heading + dt * 18) % 360;
+      target.z = terrainHeightAt(target.x, target.y) + 3;
+    } else if (target.type === "personnel") {
+      const patrol = target.patrolPath || [{ x: target.x, y: target.y }];
+      const nextIndex = target.patrolIndex ?? 0;
+      const distance = movePlanarActor(target, patrol[nextIndex], dt, 1.4, 90);
+      if (distance < 8) {
+        target.patrolIndex = (nextIndex + 1) % patrol.length;
+      }
+      target.z = terrainHeightAt(target.x, target.y) + 2;
+    } else if (target.type === "small-uas") {
+      target.orbitPhase = (target.orbitPhase || 0) + dt * ((target.speed || 16) / (target.orbitRadius || 80));
+      const center = target.orbitCenter || { x: target.x, y: target.y };
+      target.x = clamp(center.x + Math.cos(target.orbitPhase) * (target.orbitRadius || 80), 30, WORLD_M - 30);
+      target.y = clamp(center.y + Math.sin(target.orbitPhase) * (target.orbitRadius || 80), 30, WORLD_M - 30);
+      target.heading = ((target.orbitPhase + Math.PI / 2) * 180) / Math.PI;
+      target.z = 74 + Math.sin(target.orbitPhase * 1.7) * 8;
+    }
+  }
 }
 
 function stepSimulation(dt) {
   if (simPaused) return;
   simTime += dt;
+  updateFieldContacts(dt);
 
   // drift feed quality metrics over time
   for (const feed of feeds) {
@@ -529,7 +655,7 @@ function bvhQuery(asset) {
   if (terrainClearance < 82) {
     hits.push({
       id: "terrain-clearance",
-      label: "terrain clearance",
+      label: "Terrain Clearance",
       kind: "terrain",
       severity: "watch",
       distance: Math.max(0, terrainClearance),
@@ -568,8 +694,13 @@ function modeCopy() {
   return {
     sync: stagedCommands.length,
     watermark: syncWatermark,
-    sensor: "object pass",
   };
+}
+
+function syncGateLabel() {
+  if (connectivityMode === "online") return spoolDepth > 0 ? `${spoolDepth} Releasable` : "Open";
+  if (connectivityMode === "degraded") return spoolDepth > 0 ? `${spoolDepth} Queued` : "Queued Local";
+  return spoolDepth > 0 ? `${spoolDepth} Held` : "Closed Local";
 }
 
 function classifyFrame(feed, visible) {
@@ -580,22 +711,22 @@ function classifyFrame(feed, visible) {
     : 0;
   if (visible.some((obj) => obj.threat === "critical")) {
     return [
-      ["restricted object quantified", 0.92],
-      ["objects quantified", Math.max(0.48, avgConfidence)],
-      ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
+      ["Restricted Object Quantified", 0.92],
+      ["Objects Quantified", Math.max(0.48, avgConfidence)],
+      ["Air Tracks Detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
     ];
   }
   if (feed.battery < 70) {
     return [
-      ["low power track quantified", 0.84],
-      ["objects quantified", Math.max(0.45, avgConfidence)],
-      ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
+      ["Low Power Track Quantified", 0.84],
+      ["Objects Quantified", Math.max(0.45, avgConfidence)],
+      ["Air Tracks Detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
     ];
   }
   return [
-    ["objects quantified", Math.max(0.55, avgConfidence)],
-    ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
-    ["range and altitude labels", objectCount ? 0.91 : 0.12],
+    ["Objects Quantified", Math.max(0.55, avgConfidence)],
+    ["Air Tracks Detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
+    ["Range And Altitude Labels", objectCount ? 0.91 : 0.12],
   ];
 }
 
@@ -655,18 +786,8 @@ function terrainTriangleCount() {
 }
 
 function drawTerrainBackdrop(ctx, width, height) {
-  if (earthImagery.ready) {
-    drawEarthAoiTile(ctx, earthImagery.image, width, height);
-    const shade = ctx.createLinearGradient(0, 0, width, height);
-    shade.addColorStop(0, "rgba(6, 12, 14, 0.18)");
-    shade.addColorStop(0.55, "rgba(19, 38, 31, 0.46)");
-    shade.addColorStop(1, "rgba(5, 8, 9, 0.72)");
-    ctx.fillStyle = shade;
-    ctx.fillRect(0, 0, width, height);
-  } else {
-    drawProceduralTerrain(ctx, width, height);
-  }
-
+  drawProceduralTerrain(ctx, width, height);
+  drawLocalGrid(ctx, width, height);
   drawContourOverlay(ctx, width, height);
   drawTerrainMesh(ctx, width, height);
   drawScaleBar(ctx, width, height);
@@ -693,9 +814,41 @@ function drawProceduralTerrain(ctx, width, height) {
   ctx.fill();
 }
 
+function drawLocalGrid(ctx, width, height) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(245,241,232,0.08)";
+  ctx.lineWidth = 1;
+  for (let meters = 0; meters <= WORLD_M; meters += 150) {
+    const x = (meters / WORLD_M) * width;
+    const y = (meters / WORLD_M) * height;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(85,214,166,0.28)";
+  ctx.lineWidth = 1.4;
+  for (let meters = 0; meters <= WORLD_M; meters += 300) {
+    const x = (meters / WORLD_M) * width;
+    const y = (meters / WORLD_M) * height;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(245,241,232,0.68)";
+  ctx.font = "11px Inter, Arial";
+  ctx.fillText("Local Meters", 16, height - 18);
+  ctx.restore();
+}
+
 function drawContourOverlay(ctx, width, height) {
   ctx.save();
-  ctx.globalAlpha = earthImagery.ready ? 0.42 : 1;
   for (let band = 0; band < 12; band += 1) {
     const y = height * (0.12 + band * 0.075);
     ctx.strokeStyle = band % 3 === 0 ? "rgba(230,195,92,0.16)" : "rgba(245,241,232,0.08)";
@@ -754,7 +907,7 @@ function drawTerrainMesh(ctx, width, height) {
 }
 
 function drawScaleBar(ctx, width, height) {
-  const scaleM = 250;
+  const scaleM = 300;
   const barW = (scaleM / WORLD_M) * width;
   const x = width - barW - 28;
   const y = height - 28;
@@ -774,7 +927,7 @@ function drawScaleBar(ctx, width, height) {
   ctx.fillStyle = "#f5f1e8";
   ctx.font = "12px Inter, Arial";
   ctx.fillText(`${scaleM} m`, x + barW / 2 - 18, y - 9);
-  ctx.fillText(AOI_TILE.label, x - 2, y + 22);
+  ctx.fillText("1.2 km x 1.2 km AOI", x - 2, y + 22);
   ctx.restore();
 }
 
@@ -798,14 +951,6 @@ function drawImageCover(ctx, image, width, height) {
 }
 
 function drawRoadNetwork(ctx, width, height) {
-  ctx.strokeStyle = "rgba(230,195,92,0.58)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(width * 0.05, height * 0.82);
-  ctx.bezierCurveTo(width * 0.24, height * 0.72, width * 0.32, height * 0.52, width * 0.48, height * 0.5);
-  ctx.bezierCurveTo(width * 0.68, height * 0.48, width * 0.8, height * 0.36, width * 0.96, height * 0.31);
-  ctx.stroke();
-
   ctx.strokeStyle = "rgba(245,241,232,0.26)";
   ctx.lineWidth = 1.4;
   ctx.beginPath();
@@ -813,6 +958,69 @@ function drawRoadNetwork(ctx, width, height) {
   ctx.lineTo(width * 0.36, height * 0.66);
   ctx.lineTo(width * 0.58, height * 0.56);
   ctx.stroke();
+}
+
+function routeSegmentOffset(a, b, offsetM) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const nx = (-dy / length) * offsetM;
+  const ny = (dx / length) * offsetM;
+  return {
+    a: { x: a.x + nx, y: a.y + ny },
+    b: { x: b.x + nx, y: b.y + ny },
+  };
+}
+
+function drawWorldPath(ctx, points, width, height) {
+  points.forEach((point, index) => {
+    const projected = worldToCanvas(point, width, height);
+    if (index === 0) ctx.moveTo(projected.x, projected.y);
+    else ctx.lineTo(projected.x, projected.y);
+  });
+}
+
+function drawRouteGuardCorridor2D(ctx, width, height) {
+  const corridorPx = (ROUTE_GUARD_HALF_WIDTH_M * 2 / WORLD_M) * Math.min(width, height);
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = "rgba(85, 214, 166, 0.1)";
+  ctx.lineWidth = corridorPx;
+  ctx.beginPath();
+  drawWorldPath(ctx, ROUTE_GUARD_PATH, width, height);
+  ctx.stroke();
+
+  for (const offset of [-ROUTE_GUARD_HALF_WIDTH_M, ROUTE_GUARD_HALF_WIDTH_M]) {
+    ctx.strokeStyle = "rgba(85, 214, 166, 0.7)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+      const segment = routeSegmentOffset(ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], offset);
+      const a = worldToCanvas(segment.a, width, height);
+      const b = worldToCanvas(segment.b, width, height);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(230, 195, 92, 0.76)";
+  ctx.lineWidth = 2.6;
+  ctx.setLineDash([16, 10]);
+  ctx.beginPath();
+  drawWorldPath(ctx, ROUTE_GUARD_PATH, width, height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const labelPoint = worldToCanvas(ROUTE_GUARD_PATH[2], width, height);
+  ctx.fillStyle = "rgba(8, 13, 15, 0.76)";
+  ctx.fillRect(labelPoint.x - 10, labelPoint.y - 28, 132, 22);
+  ctx.fillStyle = "#55d6a6";
+  ctx.font = "12px Inter, Arial";
+  ctx.fillText("Route Guard Corridor", labelPoint.x - 2, labelPoint.y - 12);
+  ctx.restore();
 }
 
 function drawSwarmMap() {
@@ -823,6 +1031,7 @@ function drawSwarmMap() {
   ctx.clearRect(0, 0, width, height);
   drawTerrainBackdrop(ctx, width, height);
   drawRoadNetwork(ctx, width, height);
+  drawRouteGuardCorridor2D(ctx, width, height);
 
   for (const node of buildBvhNodes()) {
     ctx.strokeStyle = node.severity === "critical" ? "rgba(255, 93, 93, 0.42)" : "rgba(230, 195, 92, 0.35)";
@@ -841,6 +1050,9 @@ function drawSwarmMap() {
   for (const asset of allFeeds()) {
     drawAsset(ctx, asset, width, height);
   }
+  for (const contact of sceneClassTargets) {
+    drawFieldContact(ctx, contact, width, height);
+  }
   drawRayFan(ctx, selectedFeed(), width, height);
 }
 
@@ -853,7 +1065,7 @@ function drawBase(ctx, width, height) {
   ctx.strokeRect(point.x - 12, point.y - 12, 24, 24);
   ctx.fillStyle = "#f2efe5";
   ctx.font = "12px Inter, Arial";
-  ctx.fillText("fusion node", point.x + 16, point.y + 4);
+  ctx.fillText("Fusion Node", point.x + 16, point.y + 4);
 }
 
 function drawPath(ctx, feed, width, height) {
@@ -903,6 +1115,42 @@ function drawAsset(ctx, asset, width, height) {
   ctx.fillText(asset.callsign, x + 12, y + 4);
 }
 
+function drawFieldContact(ctx, contact, width, height) {
+  const { x, y } = worldToCanvas(contact, width, height);
+  const color = colors[contact.key] || "#55d6a6";
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.strokeStyle = contact.type === "rf-source" ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  if (contact.type === "vehicle") {
+    ctx.rect(x - 8, y - 5, 16, 10);
+  } else if (contact.type === "personnel") {
+    ctx.arc(x - 4, y, 3.5, 0, Math.PI * 2);
+    ctx.moveTo(x + 7.5, y);
+    ctx.arc(x + 4, y, 3.5, 0, Math.PI * 2);
+  } else if (contact.type === "small-uas") {
+    ctx.moveTo(x, y - 8);
+    ctx.lineTo(x + 8, y + 6);
+    ctx.lineTo(x - 8, y + 6);
+    ctx.closePath();
+  } else if (contact.type === "rf-source") {
+    ctx.moveTo(x, y - 8);
+    ctx.lineTo(x + 8, y);
+    ctx.lineTo(x, y + 8);
+    ctx.lineTo(x - 8, y);
+    ctx.closePath();
+  } else {
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+  }
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f2efe5";
+  ctx.font = "11px Inter, Arial";
+  ctx.fillText(contact.callsign, x + 11, y + 4);
+  ctx.restore();
+}
+
 function drawZone(ctx, x, y, radius, color, label) {
   ctx.fillStyle = `${color}66`;
   ctx.strokeStyle = color;
@@ -922,6 +1170,7 @@ function drawPov(feed, visible) {
   const height = povCanvas.height;
   drawPovMapBackground(width, height);
   drawPov3DGrid(feed, width, height);
+  drawPovRouteGuardCorridor(feed, width, height);
   drawPovHazards(feed, width, height);
   drawPovDetectionFrustum(feed, width, height);
   drawPovObjects(feed, visible, width, height);
@@ -930,13 +1179,13 @@ function drawPov(feed, visible) {
 }
 
 function detectionClass(asset) {
-  if (asset.type === "vehicle") return "wheeled vehicle";
-  if (asset.type === "rf-source") return "rf source";
-  if (asset.type === "personnel") return "personnel";
-  if (asset.type === "small-uas") return "small UAS";
-  if (asset.type === "ground") return "ground team";
-  if (asset.type === "fixed-wing") return "fixed wing";
-  return "quadrotor";
+  if (asset.type === "vehicle") return "Wheeled Vehicle";
+  if (asset.type === "rf-source") return "RF Source";
+  if (asset.type === "personnel") return "Personnel";
+  if (asset.type === "small-uas") return "Small UAS";
+  if (asset.type === "ground") return "Ground Team";
+  if (asset.type === "fixed-wing") return "Fixed Wing";
+  return "Quadrotor";
 }
 
 function mapProjectionScale(width, height) {
@@ -1010,6 +1259,73 @@ function drawPov3DGrid(feed, width, height) {
     }
     povCtx.stroke();
   }
+  povCtx.restore();
+}
+
+function projectPovTerrainPoint(feed, point, width, height) {
+  return projectPovMapPoint(
+    feed,
+    point,
+    width,
+    height,
+    terrainHeightAt(point.x, point.y) - POV_MAP_ANCHOR.z,
+  );
+}
+
+function drawPovProjectedSegment(feed, a, b, width, height, offsetM = 0) {
+  const segment = offsetM ? routeSegmentOffset(a, b, offsetM) : { a, b };
+  const start = projectPovTerrainPoint(feed, segment.a, width, height);
+  const end = projectPovTerrainPoint(feed, segment.b, width, height);
+  povCtx.moveTo(start.x, start.y);
+  povCtx.lineTo(end.x, end.y);
+}
+
+function drawPovRouteGuardCorridor(feed, width, height) {
+  povCtx.save();
+  povCtx.lineCap = "round";
+  povCtx.lineJoin = "round";
+
+  povCtx.strokeStyle = "rgba(85, 214, 166, 0.12)";
+  povCtx.lineWidth = 20;
+  povCtx.beginPath();
+  for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+    drawPovProjectedSegment(feed, ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], width, height);
+  }
+  povCtx.stroke();
+
+  for (const offset of [-ROUTE_GUARD_HALF_WIDTH_M, ROUTE_GUARD_HALF_WIDTH_M]) {
+    povCtx.strokeStyle = "rgba(85, 214, 166, 0.72)";
+    povCtx.lineWidth = 2;
+    povCtx.beginPath();
+    for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+      drawPovProjectedSegment(
+        feed,
+        ROUTE_GUARD_PATH[index],
+        ROUTE_GUARD_PATH[index + 1],
+        width,
+        height,
+        offset,
+      );
+    }
+    povCtx.stroke();
+  }
+
+  povCtx.strokeStyle = "rgba(230, 195, 92, 0.8)";
+  povCtx.lineWidth = 2.4;
+  povCtx.setLineDash([12, 8]);
+  povCtx.beginPath();
+  for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+    drawPovProjectedSegment(feed, ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], width, height);
+  }
+  povCtx.stroke();
+  povCtx.setLineDash([]);
+
+  const label = projectPovTerrainPoint(feed, ROUTE_GUARD_PATH[2], width, height);
+  povCtx.fillStyle = "rgba(8, 13, 15, 0.76)";
+  povCtx.fillRect(label.x - 10, label.y - 30, 140, 22);
+  povCtx.fillStyle = "#55d6a6";
+  povCtx.font = "12px Inter, Arial";
+  povCtx.fillText("Route Guard Corridor", label.x - 2, label.y - 14);
   povCtx.restore();
 }
 
@@ -1089,7 +1405,7 @@ function drawPovObjects(feed, visible, width, height) {
     range: 0,
     bearingDeg: 0,
     altitudeDelta: 0,
-    className: "selected node",
+    className: "Selected Node",
     detectionConfidence: 1,
     threat: "watch",
   };
@@ -1107,13 +1423,28 @@ function drawPovObjects(feed, visible, width, height) {
       air: projectPovMapPoint(feed, obj, width, height, obj.z - POV_MAP_ANCHOR.z),
     }))
     .sort((a, b) => a.ground.y - b.ground.y);
+  const labeledIds = new Set(priorityLabeledObjects(sorted, feed.id).map((obj) => obj.id));
+  const placedLabelRects = [];
 
   for (const obj of sorted) {
     drawPovObjectMarker(obj);
-    if (obj.id !== feed.id) {
-      addDetectionLabel(obj, width, height);
+    if (labeledIds.has(obj.id)) {
+      addDetectionLabel(obj, width, height, placedLabelRects);
     }
   }
+}
+
+function priorityLabeledObjects(objects, feedId) {
+  return objects
+    .filter((obj) => obj.id !== feedId)
+    .sort((a, b) => {
+      const threatDelta = (b.threat === "critical") - (a.threat === "critical");
+      if (threatDelta) return threatDelta;
+      const rangeDelta = a.range - b.range;
+      if (Math.abs(rangeDelta) > 1) return rangeDelta;
+      return b.detectionConfidence - a.detectionConfidence;
+    })
+    .slice(0, MAX_VISIBLE_DETECTION_LABELS);
 }
 
 function drawPovObjectMarker(obj) {
@@ -1179,16 +1510,49 @@ function drawPovObjectMarker(obj) {
   povCtx.restore();
 }
 
-function addDetectionLabel(obj, width, height) {
+function rectsOverlap(a, b) {
+  return !(
+    a.x + a.w < b.x
+    || b.x + b.w < a.x
+    || a.y + a.h < b.y
+    || b.y + b.h < a.y
+  );
+}
+
+function placeDetectionLabel(obj, width, height, placedRects) {
+  const labelW = 164;
+  const labelH = 44;
+  const candidates = [
+    { x: obj.air.x + 16, y: obj.air.y - 14 },
+    { x: obj.air.x + 16, y: obj.air.y + 18 },
+    { x: obj.air.x - labelW - 16, y: obj.air.y - 14 },
+    { x: obj.air.x - labelW - 16, y: obj.air.y + 18 },
+    { x: obj.air.x - labelW / 2, y: obj.air.y - labelH - 18 },
+  ].map((candidate) => ({
+    x: clamp(candidate.x, 10, width - labelW - 10),
+    y: clamp(candidate.y, 28, height - labelH - 10),
+    w: labelW,
+    h: labelH,
+  }));
+
+  const rect = candidates.find(
+    (candidate) => placedRects.every((placed) => !rectsOverlap(candidate, placed)),
+  ) || candidates[0];
+  placedRects.push(rect);
+  return rect;
+}
+
+function addDetectionLabel(obj, width, height, placedRects) {
+  const rect = placeDetectionLabel(obj, width, height, placedRects);
   const label = document.createElement("div");
   label.className = `target-label ${obj.threat}`;
-  label.style.left = `${clamp(obj.air.x, 10, width - 190)}px`;
-  label.style.top = `${clamp(obj.air.y, 28, height - 62)}px`;
+  label.style.left = `${rect.x}px`;
+  label.style.top = `${rect.y}px`;
 
   const title = document.createElement("strong");
   title.textContent = `${obj.className} ${Math.round(obj.detectionConfidence * 100)}%`;
   const details = document.createElement("span");
-  details.textContent = `${obj.callsign} · ${obj.range} m · delta ${obj.altitudeDelta} m`;
+  details.textContent = `${obj.callsign} · ${formatMeters(obj.range)} · Δ${formatMeters(obj.altitudeDelta)}`;
   label.append(title, details);
   overlay.appendChild(label);
 }
@@ -1198,7 +1562,7 @@ function drawPovTelemetry(feed, visible, width, height) {
   povCtx.fillRect(18, 18, 260, 78);
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
-  povCtx.fillText(`${feed.callsign} 3D OBJECT MAP`, 32, 42);
+  povCtx.fillText(`${feed.callsign} 3D Field View`, 32, 42);
   povCtx.fillText(`CUE ${visible.length}  HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${formatMeters(feed.z)}`, 32, 66);
   povCtx.fillText(`SPD ${Math.round(feed.speed)} m/s  BAT ${Math.round(feed.battery)}%`, 32, 90);
 }
@@ -1222,14 +1586,14 @@ function drawPovQuantificationPanel(visible, width, height) {
 
   povCtx.fillStyle = "#55d6a6";
   povCtx.font = "12px Inter, Arial";
-  povCtx.fillText("OBJECT PASS", x + 14, y + 24);
+  povCtx.fillText("Local Cue Pass", x + 14, y + 24);
   povCtx.fillStyle = "#f5f1e8";
   povCtx.font = "20px Inter, Arial";
-  povCtx.fillText(`${visible.length} quantified`, x + 14, y + 50);
+  povCtx.fillText(`${visible.length} Quantified`, x + 14, y + 50);
   povCtx.fillStyle = "rgba(245, 241, 232, 0.72)";
   povCtx.font = "12px Inter, Arial";
   povCtx.fillText(
-    `${airTracks} air tracks · ${Math.round(avgConfidence * 100)}% avg confidence`,
+    `${airTracks} Air Tracks · ${Math.round(avgConfidence * 100)}% Avg Confidence`,
     x + 14,
     y + 70,
   );
@@ -1247,7 +1611,7 @@ function renderFeeds() {
       return `<button class="asset-row ${selected}" data-feed="${feed.id}">
         <div>
           <strong>${feed.callsign}</strong>
-          <div class="asset-meta">${feed.command} · ${formatMeters(feed.z)} · ${Math.round(feed.battery)}% · <span class="feed-latency compact ${latClass}">${latency}</span></div>
+          <div class="asset-meta">${displayCommand(feed.command)} · ${formatMeters(feed.z)} · ${Math.round(feed.battery)}% · <span class="feed-latency compact ${latClass}">${latency}</span></div>
         </div>
         <span class="asset-dot ${dotClass}"></span>
       </button>`;
@@ -1264,10 +1628,10 @@ function renderFeeds() {
 function renderFeedQuality() {
   const all = allFeeds();
   const avgFresh = all.reduce((s, f) => s + f.freshness, 0) / all.length;
-  const freshnessLabel = avgFresh > 0.85 ? "fresh" : avgFresh > 0.6 ? "degraded" : "stale";
-  document.querySelector("#feed-count").textContent = `${feeds.length} feeds`;
+  const freshnessLabel = avgFresh > 0.85 ? "Fresh" : avgFresh > 0.6 ? "Degraded" : "Stale";
+  document.querySelector("#feed-count").textContent = `${feeds.length} Feeds`;
   document.querySelector("#feed-freshness").textContent = freshnessLabel;
-  document.querySelector("#spool-depth").textContent = `spool ${spoolDepth}`;
+  document.querySelector("#spool-depth").textContent = `Spool ${spoolDepth}`;
 
   document.querySelector("#feed-quality").innerHTML = allFeeds()
     .map((feed) => {
@@ -1289,12 +1653,12 @@ function renderFeedQuality() {
 function renderStagedPacket() {
   const packetEl = document.querySelector("#staged-packet");
   if (stagedCommands.length === 0) {
-    packetEl.innerHTML = '<div class="packet-empty subtle">No staged commands — local C2 issues commands directly</div>';
+    packetEl.innerHTML = '<div class="packet-empty subtle">No Staged Commands — Local C2 Issues Commands Directly</div>';
     return;
   }
   packetEl.innerHTML = stagedCommands
     .slice(0, 5)
-    .map((cmd) => `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${cmd.command.toUpperCase()}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`)
+    .map((cmd) => `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${displayCommand(cmd.command)}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`)
     .join("");
 }
 
@@ -1302,29 +1666,30 @@ function renderHardware(feed, hits) {
   const status = modeCopy();
   const bvhMs = 8.8 + hits.length * 0.7;
   const rows = [
-    ["Fusion authority", "laptop-local sensor fusion", "good"],
-    ["Earth AOI", earthImagery.ready ? "cached raster tile" : "procedural estimate", earthImagery.ready ? "good" : "watch"],
-    ["Terrain mesh", `${terrainTriangleCount()} triangles`, "good"],
-    ["Collision BVH", `${hits.length} checks · ${formatLatencyMs(bvhMs)}`, "good"],
-    ["Spool buffer", `${spoolDepth} staged for gate`, spoolDepth > 0 ? "watch" : "good"],
-    ["Sync watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "watch" : "good"],
+    ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
+    ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
+    ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
+    ["Route Guard", `${hits.length} Checks · ${formatLatencyMs(bvhMs)}`, "Good"],
+    ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
+    ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
   ];
   document.querySelector("#hardware-list").innerHTML = rows
     .map(
       ([name, detail, kind]) =>
-        `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind}">${kind}</span></div>`,
+        `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind.toLowerCase()}">${kind}</span></div>`,
     )
     .join("");
-  setText("#bvh-label", "CPU route check");
-  setText("#fusion-badge", "CPU collision parity");
+  const criticalHit = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
+  const nearestHit = hits[0];
+  const routeState = criticalHit ? "Rerouting" : nearestHit ? "Monitoring" : "Clear";
+  setText("#bvh-label", routeState);
+  setText("#fusion-badge", criticalHit ? "Route Guard Rerouting" : `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
-    earthImagery.ready
-      ? `${AOI_TILE.label}; terrain mesh feeds maneuver BVH`
-      : "Terrain from procedural estimate; awaiting cache",
+    "1.2 km Local AOI · Tracks And Route Zones",
   );
-  setText("#range-label", `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`);
-  setText("#pov-title", `${feed.callsign} 3D Map Feed`);
+  setText("#range-label", nearestHit ? `${formatMeters(nearestHit.distance)}` : "Clear");
+  setText("#pov-title", `${feed.callsign} 3D Field View`);
 }
 
 function renderVision(scores) {
@@ -1340,15 +1705,15 @@ function renderAlerts(feed, hits, scores) {
   const alerts = [];
   const critical = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   if (critical) {
-    alerts.push(["critical", `${feed.callsign} inside ${critical.label}; route correction active`]);
-  } else if (scores[0][0] === "restricted volume in POV") {
-    alerts.push(["critical", "Restricted volume in view"]);
+    alerts.push(["critical", `${feed.callsign} Inside ${critical.label}; Route Correction Active`]);
+  } else if (scores[0][0] === "Restricted Volume In POV") {
+    alerts.push(["critical", "Restricted Volume In View"]);
   }
   if (spoolDepth > 0) {
-    alerts.push(["watch", `${spoolDepth} commands queued for operator sync gate`]);
+    alerts.push(["watch", `${spoolDepth} Commands Queued For Operator Sync Gate`]);
   }
-  if (feed.battery < 70) alerts.push(["watch", `${feed.callsign} battery near return threshold`]);
-  if (alerts.length === 0) alerts.push(["watch", "Fusion node nominal"]);
+  if (feed.battery < 70) alerts.push(["watch", `${feed.callsign} Battery Near Return Threshold`]);
+  if (alerts.length === 0) alerts.push(["watch", "Fusion Node Nominal"]);
   document.querySelector("#alert-list").innerHTML = alerts
     .map(([level, text]) => `<div class="alert-row ${level}">${text}</div>`)
     .join("");
@@ -1360,11 +1725,11 @@ function updateModeChrome() {
   pill.textContent = CONNECTIVITY_LABELS[connectivityMode];
   pill.className = `mode-pill ${CONNECTIVITY_CLASSES[connectivityMode]}`;
   setText("#sync-count", String(status.sync));
-  setText("#sync-watermark", `watermark T+${status.watermark.toFixed(1)}s`);
+  setText("#sync-watermark", `Watermark T+${status.watermark.toFixed(1)}s`);
   setText("#clock-label", `T+${simTime.toFixed(1)}s`);
   const syncPill = document.querySelector("#sync-state-pill");
   if (syncPill) {
-    syncPill.textContent = spoolDepth > 0 ? `${spoolDepth} staged` : "sync idle";
+    syncPill.textContent = spoolDepth > 0 ? `${spoolDepth} Staged` : "Sync Idle";
     syncPill.classList.toggle("staged", spoolDepth > 0);
   }
   // Sync gate: disable release button unless in ONLINE mode
@@ -1372,18 +1737,18 @@ function updateModeChrome() {
   if (syncBtn) {
     syncBtn.disabled = connectivityMode !== "online";
     syncBtn.title = connectivityMode === "online"
-      ? "Release staged commands to enterprise"
-      : `${connectivityMode.toUpperCase()} mode: enterprise sync blocked`;
+      ? "Release Staged Commands To Enterprise"
+      : `${CONNECTIVITY_LABELS[connectivityMode]}: Enterprise Sync Blocked`;
   }
   // Update operator-gated copy based on mode
   const syncStatus = document.querySelector("#sync-status");
   if (syncStatus) {
     if (connectivityMode === "offline") {
-      syncStatus.textContent = "OFFLINE: sync gate closed · enterprise unreachable";
+      syncStatus.textContent = "Offline: Sync Gate Closed · Enterprise Unreachable";
     } else if (connectivityMode === "degraded") {
-      syncStatus.textContent = "DEGRADED: sync gate closed · commands queued for reconnect";
+      syncStatus.textContent = "Degraded: Sync Gate Closed · Commands Queued For Reconnect";
     } else {
-      syncStatus.textContent = "ONLINE: sync gate open · press Release to sync";
+      syncStatus.textContent = "Online: Sync Gate Open · Press Release To Sync";
     }
   }
   // Update mode buttons active state
@@ -1397,6 +1762,44 @@ function renderMissionLog() {
   document.querySelector("#mission-log").innerHTML = missionLog
     .map((entry) => `<div class="log-row">${entry}</div>`)
     .join("");
+}
+
+function renderSwarmC2Status() {
+  // Update the topbar feed summary with swarm C2 metrics
+  const feedCountEl = document.querySelector("#feed-count");
+  const retaskEl = document.querySelector("#spool-depth");
+
+  if (feedCountEl) {
+    feedCountEl.textContent = `${feeds.length} Feeds`;
+  }
+
+  // Show retask count in the spool depth pill when there's activity
+  if (retaskEl) {
+    if (swarmTasking.retaskCount > 0) {
+      retaskEl.textContent = `${swarmTasking.retaskCount} Retasks`;
+      retaskEl.classList.add("staged");
+    } else {
+      retaskEl.textContent = `Spool ${spoolDepth}`;
+      retaskEl.classList.remove("staged");
+    }
+  }
+
+  // Update feed freshness based on swarm activity
+  const freshnessEl = document.querySelector("#feed-freshness");
+  if (freshnessEl) {
+    const lastCommandTime = swarmTasking.history.length > 0 ? swarmTasking.history[0].ts : 0;
+    const timeSinceCommand = simTime - lastCommandTime;
+    if (swarmTasking.history.length === 0) {
+      freshnessEl.textContent = "Fresh";
+      freshnessEl.classList.remove("staged");
+    } else if (timeSinceCommand < 5) {
+      freshnessEl.textContent = "Active C2";
+      freshnessEl.classList.remove("staged");
+    } else {
+      freshnessEl.textContent = "Monitoring";
+      freshnessEl.classList.remove("staged");
+    }
+  }
 }
 
 function renderFrame() {
@@ -1414,11 +1817,58 @@ function renderFrame() {
   renderAlerts(feed, hits, scores);
   renderMissionLog();
   updateModeChrome();
+  currentPosture = computePosture();
   document.querySelector("#frame-counter").textContent = simPaused
     ? "Paused"
-    : "3D local object map with detector object quantification";
-  document.querySelector("#field-condition-label").textContent = scores[0][0];
-  document.querySelector("#npu-label").textContent = modeCopy().sensor;
+    : "3D Field C2 View With Priority Contacts";
+  setText(
+    "#power-posture-label",
+    `${displayTier(currentPosture.tier)} · ${Math.round(laptopBattery)}%`,
+  );
+  setText("#sync-gate-label", syncGateLabel());
+  renderPosturePanel();
+}
+
+function renderPosturePanel() {
+  const posture = computePosture();
+  // Battery slider
+  const slider = document.getElementById("battery-slider");
+  const sliderPct = document.getElementById("battery-slider-pct");
+  if (slider && sliderPct) {
+    slider.value = Math.round(laptopBattery);
+    sliderPct.textContent = `${Math.round(laptopBattery)}%`;
+    const cls = laptopBattery < 15 ? "low" : laptopBattery < 40 ? "warn" : "";
+    slider.className = cls;
+    sliderPct.className = `slider-pct ${cls}`;
+    if (cls === "low") sliderPct.textContent = `${Math.round(laptopBattery)}% CRIT`;
+    else if (cls === "warn") sliderPct.textContent = `${Math.round(laptopBattery)}% LOW`;
+  }
+  // Posture metrics
+  setText("#posture-battery-pct", `${Math.round(laptopBattery)}%`);
+  setText("#posture-runtime", `${Math.round(posture.runtimeMin)} min`);
+  setText("#posture-tier", displayTier(posture.tier).toUpperCase());
+  setText("#posture-thermal", posture.thermal.charAt(0).toUpperCase() + posture.thermal.slice(1));
+  setText("#posture-fallback", posture.tier !== "minimal" ? "CPU" : "Limited");
+  // Battery bar
+  const bar = document.getElementById("posture-battery-bar");
+  if (bar) {
+    bar.style.width = `${Math.max(0, laptopBattery)}%`;
+    bar.style.background = laptopBattery < 15 ? "var(--danger)" : laptopBattery < 40 ? "var(--warn)" : "var(--accent)";
+  }
+  // Tier label color
+  const tierEl = document.getElementById("posture-tier");
+  if (tierEl) {
+    tierEl.className = `tier-label ${posture.tier}`;
+  }
+  // Workloads
+  document.querySelector("#posture-workloads").innerHTML = [
+    ...posture.safe.map((w) => `<span class="workload-tag safe">${w}</span>`),
+    ...posture.restricted.map((w) => `<span class="workload-tag restricted">${w}</span>`),
+  ].join("");
+  // Notes
+  document.querySelector("#posture-notes").innerHTML = posture.notes
+    .map((note) => `<div class="posture-note ${note.level || ""}">${note.text}</div>`)
+    .join("");
 }
 
 function tick(now) {
@@ -1442,29 +1892,29 @@ function cycleSelected(offset) {
   const current = Math.max(0, all.findIndex((a) => a.id === selectedId));
   const next = (current + offset + all.length) % all.length;
   selectedId = all[next].id;
-  pushLog(`Selected feed switched to ${all[next].callsign}.`);
+  pushLog(`Selected Feed Switched To ${all[next].callsign}.`);
   renderFrame();
 }
 
 function triggerSync() {
   // Hard boundary: even if button is somehow clicked, enforce the gate
   if (connectivityMode !== "online") {
-    pushLog(`SYNC BLOCKED: ${connectivityMode.toUpperCase()} mode — enterprise sync requires ONLINE.`);
-    document.querySelector("#sync-status").textContent = `SYNC BLOCKED: ${connectivityMode.toUpperCase()} mode prevents enterprise upload`;
+    pushLog(`Sync Blocked: ${CONNECTIVITY_LABELS[connectivityMode]} Prevents Enterprise Upload.`);
+    document.querySelector("#sync-status").textContent = `Sync Blocked: ${CONNECTIVITY_LABELS[connectivityMode]} Prevents Enterprise Upload`;
     return;
   }
   if (stagedCommands.length === 0) {
-    pushLog("No staged commands to sync.");
+    pushLog("No Staged Commands To Sync.");
     return;
   }
   const count = stagedCommands.length;
   stagedCommands.length = 0;
   spoolDepth = 0;
   syncStaged = false;
-  pushLog(`${count} commands released via operator sync gate.`);
-  document.querySelector("#sync-status").textContent = `Released ${count} commands at T+${simTime.toFixed(1)}s`;
+  pushLog(`${count} Commands Released Via Operator Sync Gate.`);
+  document.querySelector("#sync-status").textContent = `Released ${count} Commands At T+${simTime.toFixed(1)}s`;
   setTimeout(() => {
-    document.querySelector("#sync-status").textContent = "No connection required for local operations";
+    document.querySelector("#sync-status").textContent = "No Connection Required For Local Operations";
   }, 3000);
 }
 
@@ -1479,18 +1929,18 @@ document.querySelector("#next-frame").addEventListener("click", () => cycleSelec
 document.querySelector("#toggle-bvh").addEventListener("click", () => {
   rayPath = rayPath === "rtx" ? "cpu" : "rtx";
   pushLog(
-    `Collision/path solver switched to ${rayPath === "rtx" ? "RT core acceleration" : "CPU parity"} locally.`,
+    `Route Guard Switched To ${rayPath === "rtx" ? "Optional RTX Acceleration" : "CPU Path"} Locally.`,
   );
 });
 
 function setConnectivityMode(mode) {
   connectivityMode = mode;
   if (mode === "offline") {
-    pushLog("Mode OFFLINE: Local C2 active, enterprise sync blocked.");
+    pushLog("Mode Offline: Local C2 Active, Enterprise Sync Blocked.");
   } else if (mode === "degraded") {
-    pushLog("Mode DEGRADED: Local C2 active, sync queue held, awaiting connectivity.");
+    pushLog("Mode Degraded: Local C2 Active, Sync Queue Held, Awaiting Connectivity.");
   } else {
-    pushLog("Mode ONLINE: Enterprise sync gate open.");
+    pushLog("Mode Online: Enterprise Sync Gate Open.");
   }
   renderFrame();
 }
@@ -1499,5 +1949,24 @@ document.querySelector("#mode-offline").addEventListener("click", () => setConne
 document.querySelector("#mode-degraded").addEventListener("click", () => setConnectivityMode("degraded"));
 document.querySelector("#mode-online").addEventListener("click", () => setConnectivityMode("online"));
 
-pushLog("Fusion node started; laptop-local authority active.");
+// Power source buttons
+document.querySelectorAll(".power-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    powerSource = btn.dataset.source;
+    document.querySelectorAll(".power-btn").forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderFrame();
+  });
+});
+
+// Battery slider handler
+const batterySlider = document.getElementById("battery-slider");
+if (batterySlider) {
+  batterySlider.addEventListener("input", (e) => {
+    laptopBattery = parseFloat(e.target.value);
+    renderFrame();
+  });
+}
+
+pushLog("Fusion Node Started; Laptop-Local Authority Active.");
 requestAnimationFrame(tick);

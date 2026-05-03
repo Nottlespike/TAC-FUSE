@@ -114,7 +114,7 @@ def test_task_pack_yaml_contains_priority_order() -> None:
         "Disconnected resilience",
         "Drone coordination",
         "Sensor fusion and alerting",
-        "3D object-map quantification",
+        "3D field-C2 quantification",
         "Power/latency posture",
         "Enterprise sync boundary",
     ]

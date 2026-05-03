@@ -29,7 +29,7 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("disconnected_resilience", "Disconnected resilience"),
     ("drone_coordination", "Drone coordination"),
     ("sensor_fusion_alerting", "Sensor fusion and alerting"),
-    ("object_map_quantification", "3D object-map quantification"),
+    ("object_map_quantification", "3D field-C2 quantification"),
     ("power_latency_posture", "Power/latency posture"),
     ("enterprise_sync_boundary", "Enterprise sync boundary"),
 )
@@ -76,11 +76,11 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "prioritized",
     ),
     "object_map_quantification": (
-        "3d map",
-        "3d object map",
-        "object map",
-        "object pass",
-        "objects quantified",
+        "3d field view",
+        "field c2 view",
+        "local cue pass",
+        "priority contacts",
+        "quantified",
         "detector",
         "detectionconfidence",
         "range and altitude",
@@ -167,24 +167,26 @@ INFERENCE_OWNED_PATHS = (
 )
 OBJECT_MAP_REQUIRED_TERMS: dict[str, tuple[str, ...]] = {
     "web/app.js": (
-        "3d object map",
+        "3d field view",
         "pov_map_anchor",
         "projectpovmappoint",
         "sceneclasstargets",
+        "route_guard_path",
+        "route guard corridor",
         "detectionconfidence",
         "range and altitude labels",
         "wheeled vehicle",
         "rf source",
     ),
     "web/index.html": (
-        "3d map feed",
-        "detector",
-        "object pass",
+        "3d field view",
+        "power",
+        "sync",
     ),
     "tests/visual/tac-fuse.spec.js": (
-        "3d map feed",
+        "3d field view",
         "target-label",
-        "object pass",
+        "metric-strip",
     ),
 }
 POV_TERRAIN_DRIFT_TERMS = (
@@ -350,7 +352,7 @@ def _object_map_findings(root: Path, path: Path, text: str) -> list[Finding]:
                 severity="P1",
                 path=relative_path,
                 message=(
-                    "3D object-map quantification guard is missing terms: "
+                    "3D field-C2 quantification guard is missing terms: "
                     + ", ".join(missing)
                 ),
                 focus="object_map_quantification",
@@ -367,7 +369,7 @@ def _object_map_findings(root: Path, path: Path, text: str) -> list[Finding]:
                         path=relative_path,
                         message=(
                             "Operator POV drifted back toward a forward terrain/corridor "
-                            "camera; keep it as a 3D object map with quantifiable tracks."
+                            "camera; keep it as a 3D field C2 view with quantifiable contacts."
                         ),
                         focus="object_map_quantification",
                     )
@@ -563,13 +565,13 @@ def default_backlog() -> list[TaskBlueprint]:
             name="tac-fuse-p1-3d-object-map-quantification",
             priority="P1",
             phase="beautify",
-            title="Keep the operator surface on 3D object-map quantification",
+            title="Keep the operator surface on 3D field-C2 quantification",
             focus="object_map_quantification",
             body=(
-                "Maintain the selected-feed surface as a 3D local object map with "
-                "detector-visible objects, class labels, confidence, range, and altitude "
-                "quantification. Do not regress to a forward terrain/corridor camera. "
-                "NPU or MPU detection can be represented as a supporting object pass, "
+                "Maintain the selected-feed surface as a 3D field C2 view with "
+                "detector-visible priority contacts, class labels, confidence, range, "
+                "and altitude quantification. Do not regress to a forward terrain/corridor camera. "
+                "NPU or MPU detection can be represented as a supporting local cue pass, "
                 "but local C2 continuity remains the product thesis."
             ),
             verify_command=(
