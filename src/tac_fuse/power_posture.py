@@ -1,0 +1,376 @@
+"""Laptop/backpack power and latency posture for TAC-FUSE.
+
+This module makes the fusion node's own power and compute constraints
+visible to the operator and runbook.  It answers:
+
+- How long can the laptop keep running on its current power source?
+- What workloads are safe to run given the current battery/thermal state?
+- What compute tier is available (full / reduced / minimal)?
+- Which workloads are safe during denied connectivity?
+
+The module is purely computational and does **not** require:
+- Foundry/Maven connectivity
+- Intel NPU or object detection models
+- Internet access or Hugging Face downloads
+- Real hardware polling (posture is operator-reported or estimated)
+"""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from enum import Enum
+from typing import Any
+
+
+class PowerSource(Enum):
+    """Fusion node power source."""
+
+    BATTERY = "battery"
+    BACKPACK_GENERATOR = "backpack_generator"
+    AC_MAINS = "ac_mains"
+    UNKNOWN = "unknown"
+
+
+class ComputeTier(Enum):
+    """Available compute tier based on power and thermal constraints.
+
+    FULL:      No constraints — all local workloads safe.
+    REDUCED:   Thermal or battery throttle — avoid heavy batch workloads.
+    MINIMAL:   Critical only — restrict to C2, spool, and alerting.
+    """
+
+    FULL = "full"
+    REDUCED = "reduced"
+    MINIMAL = "minimal"
+
+
+class WorkloadClass(Enum):
+    """Classification of local workloads for gating.
+
+    SAFE_OFFLINE:      Runs in any connectivity mode with minimal CPU.
+    SAFE_DEGRADED:     Needs moderate CPU; safe while disconnected but
+                       not during minimal-compute posture.
+    REQUIRES_ONLINE:   Needs enterprise sync to be useful (export/upload).
+    """
+
+    SAFE_OFFLINE = "safe_offline"
+    SAFE_DEGRADED = "safe_degraded"
+    REQUIRES_ONLINE = "requires_online"
+
+
+# Canonical workload registry — operator-facing labels for what is safe
+# NOTE: foundry_export is SAFE_OFFLINE because exports are deterministic
+# offline artifacts derived from persisted local state. Only enterprise_sync
+# (actual upload to Foundry/Maven) requires ONLINE connectivity.
+WORKLOAD_REGISTRY: dict[str, WorkloadClass] = {
+    "local_c2": WorkloadClass.SAFE_OFFLINE,
+    "sensor_fusion": WorkloadClass.SAFE_OFFLINE,
+    "alerting": WorkloadClass.SAFE_OFFLINE,
+    "fusion_spool": WorkloadClass.SAFE_OFFLINE,
+    "collision_bvh": WorkloadClass.SAFE_OFFLINE,
+    "drone_tasking": WorkloadClass.SAFE_OFFLINE,
+    "foundry_export": WorkloadClass.SAFE_OFFLINE,  # Export from local state works offline
+    "sensor_emulation": WorkloadClass.SAFE_DEGRADED,
+    "terrain_mesh": WorkloadClass.SAFE_DEGRADED,
+    "earth_aoi_cache": WorkloadClass.SAFE_DEGRADED,
+    "enterprise_sync": WorkloadClass.REQUIRES_ONLINE,  # Upload requires ONLINE
+}
+
+
+@dataclass
+class PowerPosture:
+    """Snapshot of the fusion node's power and compute posture.
+
+    This is the operator-visible summary.  Fields are deliberately
+    human-readable so the UI can render them without transformation.
+    """
+
+    power_source: str
+    battery_pct: float
+    estimated_runtime_min: float
+    compute_tier: str
+    thermal_headroom: str  # "nominal" | "warm" | "hot"
+    connectivity_mode: str
+    safe_workloads: list[str]
+    restricted_workloads: list[str]
+    offline_safe_workloads: list[str]
+    cpu_fallback: bool
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class PowerPostureConfig:
+    """Configuration for posture estimation.
+
+    All thresholds are tunable for different deployment scenarios.
+    """
+
+    # Battery thresholds (percentage)
+    battery_full_threshold: float = 80.0
+    battery_reduced_threshold: float = 40.0
+    battery_minimal_threshold: float = 15.0
+
+    # Runtime estimates (minutes) at different power sources
+    battery_full_runtime_min: float = 180.0
+    battery_reduced_runtime_min: float = 90.0
+    backpack_runtime_min: float = 360.0
+    ac_mains_runtime_min: float = float("inf")
+
+    # CPU load thresholds for thermal estimation
+    cpu_load_nominal_threshold: float = 60.0
+    cpu_load_warm_threshold: float = 85.0
+
+    # Power draw rates (percentage per minute) for runtime estimation
+    battery_drain_rate_full: float = 100.0 / 180.0  # ~0.56%/min
+    backpack_drain_rate: float = 0.0  # assumed infinite while running
+
+
+class PowerPostureManager:
+    """Manage the fusion node's power and latency posture.
+
+    This is a lightweight, offline-first manager.  The operator or an
+    external telemetry feed updates power state; the manager computes
+    what workloads are safe and produces an operator-visible summary.
+
+    Typical usage::
+
+        mgr = PowerPostureManager()
+        mgr.update_battery(72.0)
+        mgr.update_connectivity("offline")
+        posture = mgr.get_posture()
+    """
+
+    def __init__(self, config: PowerPostureConfig | None = None) -> None:
+        self.config = config or PowerPostureConfig()
+        self._power_source: PowerSource = PowerSource.BATTERY
+        self._battery_pct: float = 100.0
+        self._cpu_load_pct: float = 30.0
+        self._connectivity_mode: str = "offline"
+        self._cpu_fallback: bool = True  # CPU always available
+
+    # -- Mutators (operator or telemetry input) --
+
+    def update_power_source(self, source: PowerSource | str) -> None:
+        """Set the current power source."""
+        if isinstance(source, str):
+            source = PowerSource(source)
+        self._power_source = source
+
+    def update_battery(self, pct: float) -> None:
+        """Update battery percentage (0–100)."""
+        self._battery_pct = max(0.0, min(100.0, pct))
+
+    def update_cpu_load(self, pct: float) -> None:
+        """Update estimated CPU load percentage (0–100)."""
+        self._cpu_load_pct = max(0.0, min(100.0, pct))
+
+    def update_connectivity(self, mode: str) -> None:
+        """Update the current connectivity mode (offline/degraded/online)."""
+        self._connectivity_mode = mode
+
+    # -- Accessors --
+
+    @property
+    def power_source(self) -> PowerSource:
+        return self._power_source
+
+    @property
+    def battery_pct(self) -> float:
+        return self._battery_pct
+
+    @property
+    def cpu_load(self) -> float:
+        return self._cpu_load_pct
+
+    @property
+    def connectivity_mode(self) -> str:
+        return self._connectivity_mode
+
+    # -- Posture computation --
+
+    def compute_tier(self) -> ComputeTier:
+        """Determine the current compute tier based on power and thermal state."""
+        if self._power_source == PowerSource.AC_MAINS:
+            # AC mains: only thermal can reduce tier
+            if self._cpu_load_pct >= self.config.cpu_load_warm_threshold:
+                return ComputeTier.REDUCED
+            return ComputeTier.FULL
+
+        if self._power_source == PowerSource.BACKPACK_GENERATOR:
+            # Backpack: generous power but thermal matters
+            if self._cpu_load_pct >= self.config.cpu_load_warm_threshold:
+                return ComputeTier.REDUCED
+            if self._battery_pct < self.config.battery_minimal_threshold:
+                return ComputeTier.MINIMAL
+            return ComputeTier.FULL
+
+        # Battery: both battery level and thermal matter
+        if self._battery_pct < self.config.battery_minimal_threshold:
+            return ComputeTier.MINIMAL
+        if self._battery_pct < self.config.battery_reduced_threshold:
+            return ComputeTier.REDUCED
+        if self._cpu_load_pct >= self.config.cpu_load_warm_threshold:
+            return ComputeTier.REDUCED
+        return ComputeTier.FULL
+
+    def thermal_headroom(self) -> str:
+        """Classify thermal headroom as nominal / warm / hot."""
+        if self._cpu_load_pct >= self.config.cpu_load_warm_threshold:
+            return "hot"
+        if self._cpu_load_pct >= self.config.cpu_load_nominal_threshold:
+            return "warm"
+        return "nominal"
+
+    def estimated_runtime_min(self) -> float:
+        """Estimate remaining runtime in minutes."""
+        if self._power_source == PowerSource.AC_MAINS:
+            return self.config.ac_mains_runtime_min
+        if self._power_source == PowerSource.BACKPACK_GENERATOR:
+            # Backpack assumed running; battery is backup
+            return self.config.backpack_runtime_min
+
+        # Battery: linear estimate
+        if self._battery_pct <= 0:
+            return 0.0
+        return self._battery_pct / self.config.battery_drain_rate_full
+
+    def _classify_workloads(
+        self, tier: ComputeTier
+    ) -> tuple[list[str], list[str], list[str]]:
+        """Classify workloads into safe / restricted / offline-safe lists."""
+        safe: list[str] = []
+        restricted: list[str] = []
+        offline_safe: list[str] = []
+
+        for name, workload_class in WORKLOAD_REGISTRY.items():
+            # Offline-safe workloads always listed
+            if workload_class == WorkloadClass.SAFE_OFFLINE:
+                offline_safe.append(name)
+
+            # Determine if safe under current tier and connectivity
+            is_safe = False
+            if workload_class == WorkloadClass.SAFE_OFFLINE:
+                is_safe = tier != ComputeTier.MINIMAL or name in (
+                    "local_c2",
+                    "fusion_spool",
+                    "alerting",
+                )
+            elif workload_class == WorkloadClass.SAFE_DEGRADED:
+                is_safe = tier == ComputeTier.FULL
+            elif workload_class == WorkloadClass.REQUIRES_ONLINE:
+                is_safe = (
+                    self._connectivity_mode == "online"
+                    and tier != ComputeTier.MINIMAL
+                )
+
+            if is_safe:
+                safe.append(name)
+            else:
+                restricted.append(name)
+
+        return safe, restricted, offline_safe
+
+    def get_posture(self) -> PowerPosture:
+        """Compute and return the current power/latency posture snapshot."""
+        tier = self.compute_tier()
+        safe, restricted, offline_safe = self._classify_workloads(tier)
+
+        notes = self._generate_notes(tier)
+
+        return PowerPosture(
+            power_source=self._power_source.value,
+            battery_pct=round(self._battery_pct, 1),
+            estimated_runtime_min=round(self.estimated_runtime_min(), 1),
+            compute_tier=tier.value,
+            thermal_headroom=self.thermal_headroom(),
+            connectivity_mode=self._connectivity_mode,
+            safe_workloads=safe,
+            restricted_workloads=restricted,
+            offline_safe_workloads=offline_safe,
+            cpu_fallback=self._cpu_fallback,
+            notes=notes,
+        )
+
+    def _generate_notes(self, tier: ComputeTier) -> list[str]:
+        """Generate operator-facing posture notes."""
+        notes: list[str] = []
+
+        if self._power_source == PowerSource.BATTERY:
+            runtime = self.estimated_runtime_min()
+            if runtime < 30:
+                notes.append(
+                    f"BATTERY CRITICAL: ~{runtime:.0f} min remaining — "
+                    "switch to backpack or AC immediately"
+                )
+            elif runtime < 60:
+                notes.append(
+                    f"BATTERY LOW: ~{runtime:.0f} min remaining — "
+                    "prepare alternate power"
+                )
+            else:
+                notes.append(f"Battery: ~{runtime:.0f} min estimated runtime")
+        elif self._power_source == PowerSource.BACKPACK_GENERATOR:
+            notes.append("Backpack generator active — extended runtime available")
+        elif self._power_source == PowerSource.AC_MAINS:
+            notes.append("AC mains power — no runtime constraint")
+
+        if tier == ComputeTier.MINIMAL:
+            notes.append(
+                "MINIMAL compute: only C2, spool, and alerting active"
+            )
+        elif tier == ComputeTier.REDUCED:
+            notes.append(
+                "REDUCED compute: heavy batch workloads paused"
+            )
+
+        if self.thermal_headroom() == "hot":
+            notes.append("Thermal throttle: CPU load elevated, expect reduced throughput")
+
+        if self._connectivity_mode == "offline":
+            notes.append("OFFLINE: all enterprise sync blocked, local C2 is authority")
+        elif self._connectivity_mode == "degraded":
+            notes.append("DEGRADED: sync queued, awaiting connectivity for upload")
+
+        if self._cpu_fallback:
+            notes.append("CPU fallback available for all compute tasks")
+
+        return notes
+
+    def is_workload_safe(self, workload_name: str) -> bool:
+        """Check if a specific workload is safe to run under current posture."""
+        tier = self.compute_tier()
+        safe, _, _ = self._classify_workloads(tier)
+        return workload_name in safe
+
+    def get_runbook_summary(self) -> str:
+        """Generate a runbook-visible text summary of the current posture."""
+        posture = self.get_posture()
+        lines = [
+            "=== TAC-FUSE Power/Latency Posture ===",
+            f"Power source:   {posture.power_source}",
+            f"Battery:        {posture.battery_pct}%",
+            f"Runtime:        {posture.estimated_runtime_min} min",
+            f"Compute tier:   {posture.compute_tier}",
+            f"Thermal:        {posture.thermal_headroom}",
+            f"Connectivity:   {posture.connectivity_mode}",
+            f"CPU fallback:   {'yes' if posture.cpu_fallback else 'no'}",
+            "",
+            "Safe workloads:",
+        ]
+        for w in posture.safe_workloads:
+            lines.append(f"  - {w}")
+        if posture.restricted_workloads:
+            lines.append("")
+            lines.append("Restricted workloads:")
+            for w in posture.restricted_workloads:
+                lines.append(f"  - {w}")
+        if posture.notes:
+            lines.append("")
+            lines.append("Notes:")
+            for note in posture.notes:
+                lines.append(f"  - {note}")
+        lines.append("=== End Posture ===")
+        return "\n".join(lines)

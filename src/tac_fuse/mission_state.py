@@ -164,11 +164,38 @@ class MissionStateStore:
             self._audit("task_updated", "operator_task", task_id, f"Updated task {task_id}")
         return updated
 
+    def cancel_task(self, task_id: str) -> dict[str, Any]:
+        """Cancel (void) a task — a retasking action that persists before export."""
+        current = self.get_task(task_id)
+        if current is None:
+            raise KeyError(task_id)
+        updated = {**current, "status": "cancelled", "updated_at": self._utc_now()}
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE operator_tasks
+                SET title = ?, description = ?, status = ?, metadata = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    updated["title"],
+                    updated["description"],
+                    updated["status"],
+                    json.dumps(updated["metadata"], sort_keys=True),
+                    updated["updated_at"],
+                    task_id,
+                ),
+            )
+            self._enqueue_sync("operator_task", task_id, "cancel", updated)
+            self._audit("task_cancelled", "operator_task", task_id, f"Cancelled task {task_id}")
+        return updated
+
     def insert_tracks(self, tracks: Iterable[Any]) -> int:
         track_payloads = [self._object_payload(track) for track in tracks]
         now = self._utc_now()
         with self._conn:
             for payload in track_payloads:
+                asset_id = str(payload["asset_id"])
                 self._conn.execute(
                     """
                     INSERT INTO asset_states
@@ -177,11 +204,14 @@ class MissionStateStore:
                     """,
                     (
                         str(uuid.uuid4()),
-                        str(payload["asset_id"]),
+                        asset_id,
                         float(payload.get("timestamp_s", payload.get("timestamp", 0.0))),
                         json.dumps(payload, sort_keys=True),
                         now,
                     ),
+                )
+                self._enqueue_sync(
+                    "asset_state", asset_id, "create", payload,
                 )
             self._audit(
                 "tracks_inserted",
@@ -323,6 +353,7 @@ class MissionStateStore:
                 """,
                 (record["key"], record["value"], record["updated_at"]),
             )
+            self._enqueue_sync("demo_state", record["key"], "update", record)
             self._audit(
                 "dashboard_value_updated",
                 "demo_state",
@@ -330,6 +361,65 @@ class MissionStateStore:
                 f"Dashboard value updated: {record['key']}",
             )
         return record
+
+    def verify_state_first(self, entity_type: str, entity_id: str) -> dict[str, bool]:
+        """Verify that a given entity has all three state-first proofs:
+        1. A persisted state row in the relevant table
+        2. An audit log entry recording the command
+        3. A sync queue entry for deferred enterprise sync
+
+        This is the first-class proof path for local C2 authority.
+        Export functions SHOULD check this before including state in artifacts.
+        """
+        state_exists = False
+        if entity_type == "operator_task":
+            row = self._conn.execute(
+                "SELECT 1 FROM operator_tasks WHERE id = ?", (entity_id,)
+            ).fetchone()
+            state_exists = row is not None
+        elif entity_type == "alert":
+            row = self._conn.execute(
+                "SELECT 1 FROM alerts WHERE id = ?", (entity_id,)
+            ).fetchone()
+            state_exists = row is not None
+        elif entity_type == "restricted_entry":
+            row = self._conn.execute(
+                "SELECT 1 FROM restricted_entries WHERE id = ?", (entity_id,)
+            ).fetchone()
+            state_exists = row is not None
+        elif entity_type == "route_conflict":
+            row = self._conn.execute(
+                "SELECT 1 FROM route_conflicts WHERE id = ?", (entity_id,)
+            ).fetchone()
+            state_exists = row is not None
+        elif entity_type == "asset_state":
+            row = self._conn.execute(
+                "SELECT 1 FROM asset_states WHERE asset_id = ?", (entity_id,)
+            ).fetchone()
+            state_exists = row is not None
+
+        audit_exists = (
+            self._conn.execute(
+                "SELECT 1 FROM audit_log WHERE entity_type = ? AND entity_id = ? LIMIT 1",
+                (entity_type, entity_id),
+            ).fetchone()
+            is not None
+        )
+
+        sync_exists = (
+            self._conn.execute(
+                "SELECT 1 FROM sync_queue WHERE entity_type = ? AND entity_id = ? LIMIT 1",
+                (entity_type, entity_id),
+            ).fetchone()
+            is not None
+        )
+
+        return {
+            "state_persisted": state_exists,
+            "audit_logged": audit_exists,
+            "sync_enqueued": sync_exists,
+            "proof_complete": state_exists and audit_exists and sync_exists,
+        }
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         row = self._conn.execute("SELECT * FROM operator_tasks WHERE id = ?", (task_id,)).fetchone()

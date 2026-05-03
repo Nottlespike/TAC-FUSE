@@ -12,9 +12,8 @@ converted to :class:`SensorEvent` envelopes for the fusion ingest bus.
 from __future__ import annotations
 
 import hashlib
-import math
 import random
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
@@ -156,7 +155,8 @@ class SensorEmulatorConfig:
 
     def derive_rng(self, frame_index: int) -> random.Random:
         """Create a deterministic RNG for a specific frame."""
-        combined_seed = self.seed + frame_index + hash(self.sensor_id) % 10000
+        sensor_seed = int(hashlib.sha256(self.sensor_id.encode()).hexdigest()[:8], 16)
+        combined_seed = self.seed + frame_index + sensor_seed % 10000
         return random.Random(combined_seed)
 
 
@@ -364,7 +364,7 @@ class DepthRangeEmulator(SensorEmulatorBase):
         """Emulate depth point cloud or range measurements."""
         num_points = rng.randint(50, 200)
         points = []
-        for i in range(num_points):
+        for _ in range(num_points):
             points.append(
                 [
                     rng.uniform(-50, 50),
@@ -427,13 +427,6 @@ class GNSSIMUEmulator(SensorEmulatorBase):
         self._orientation[2] += rng.gauss(0, 0.02)
 
         gnss_quality = rng.choice(["fix", "float", "single", "none"])
-        gnss_cov = {
-            "fix": 0.01,
-            "float": 0.1,
-            "single": 1.0,
-            "none": 10.0,
-        }.get(gnss_quality, 1.0)
-
         return {
             "position": {
                 "lat": 37.7749 + self._position[0] * 0.0001,

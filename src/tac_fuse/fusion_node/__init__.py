@@ -1,5 +1,11 @@
-"""Local sensor ingest bus for the laptop fusion node."""
+"""Local sensor ingest bus and alerting engine for the laptop fusion node."""
 
+from tac_fuse.fusion_node.alerting import (
+    AlertingEngine,
+    AlertSeverity,
+    AlertType,
+    OperatorAlert,
+)
 from tac_fuse.fusion_node.ingest import (
     ContributorSource,
     IngestBus,
@@ -14,4 +20,8 @@ __all__ = [
     "IngestRejection",
     "SensorEvent",
     "normalize_event",
+    "AlertingEngine",
+    "OperatorAlert",
+    "AlertSeverity",
+    "AlertType",
 ]

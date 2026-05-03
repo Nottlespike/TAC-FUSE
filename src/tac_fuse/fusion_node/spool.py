@@ -44,7 +44,10 @@ def _redact(payload: dict[str, Any], *, drop_keys: set[str] | None = None) -> di
         elif isinstance(v, dict):
             out[k] = _redact(v, drop_keys=drop)
         elif isinstance(v, list):
-            out[k] = [_redact(item, drop_keys=drop) if isinstance(item, dict) else item for item in v]
+            out[k] = [
+                _redact(item, drop_keys=drop) if isinstance(item, dict) else item
+                for item in v
+            ]
         else:
             out[k] = v
     return out
@@ -164,15 +167,29 @@ class FusionSpool:
             self._conn.execute(
                 """
                 INSERT OR IGNORE INTO events
-                (id, seq, contributor, event_type, payload, idempotency_key, timestamp, checksum, node_id)
+                (
+                    id,
+                    seq,
+                    contributor,
+                    event_type,
+                    payload,
+                    idempotency_key,
+                    timestamp,
+                    checksum,
+                    node_id
+                )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    record["id"], record["seq"], record["contributor"],
+                    record["id"],
+                    record["seq"],
+                    record["contributor"],
                     record["event_type"],
                     json.dumps(record["payload"], sort_keys=True),
-                    record["idempotency_key"], record["timestamp"],
-                    record["checksum"], record["node_id"],
+                    record["idempotency_key"],
+                    record["timestamp"],
+                    record["checksum"],
+                    record["node_id"],
                 ),
             )
         self._append_jsonl_line(record)
@@ -193,7 +210,11 @@ class FusionSpool:
 
         if row is None:
             return None
-        return {"seq": int(row["seq"]), "state": json.loads(row["state"]), "created_at": row["created_at"]}
+        return {
+            "seq": int(row["seq"]),
+            "state": json.loads(row["state"]),
+            "created_at": row["created_at"],
+        }
 
     def list_snapshots(self) -> list[dict[str, Any]]:
         """Return all snapshots ordered by sequence."""
@@ -203,7 +224,13 @@ class FusionSpool:
             for r in rows
         ]
 
-    def set_watermark(self, contributor: str, watermark_seq: int, *, source: str = "local") -> dict[str, Any]:
+    def set_watermark(
+        self,
+        contributor: str,
+        watermark_seq: int,
+        *,
+        source: str = "local",
+    ) -> dict[str, Any]:
         """Record a sync watermark for a contributor."""
         ts = _utc_now()
         with self._conn:
@@ -216,7 +243,12 @@ class FusionSpool:
                 """,
                 (contributor, watermark_seq, source, ts, watermark_seq, ts),
             )
-        return {"contributor": contributor, "watermark_seq": watermark_seq, "source": source, "updated_at": ts}
+        return {
+            "contributor": contributor,
+            "watermark_seq": watermark_seq,
+            "source": source,
+            "updated_at": ts,
+        }
 
     def get_watermark(self, contributor: str, *, source: str = "local") -> int | None:
         """Return the watermark sequence number for a contributor."""
@@ -245,8 +277,18 @@ class FusionSpool:
         }
         with self._conn:
             self._conn.execute(
-                "INSERT OR IGNORE INTO receipts (id, idempotency_key, target, synced_at, status) VALUES (?, ?, ?, ?, ?)",
-                (receipt["id"], receipt["idempotency_key"], receipt["target"], receipt["synced_at"], receipt["status"]),
+                """
+                INSERT OR IGNORE INTO receipts
+                (id, idempotency_key, target, synced_at, status)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    receipt["id"],
+                    receipt["idempotency_key"],
+                    receipt["target"],
+                    receipt["synced_at"],
+                    receipt["status"],
+                ),
             )
         return receipt
 
@@ -319,7 +361,11 @@ class FusionSpool:
                 except json.JSONDecodeError:
                     logger.warning("JSONL line %d: corrupt JSON, skipping", lineno)
                     continue
-                inner = {"contributor": record.get("contributor", ""), "event_type": record.get("event_type", ""), "payload": record.get("payload", {})}
+                inner = {
+                    "contributor": record.get("contributor", ""),
+                    "event_type": record.get("event_type", ""),
+                    "payload": record.get("payload", {}),
+                }
                 if record.get("checksum") != _checksum_hex(inner):
                     logger.warning("JSONL line %d: checksum mismatch, skipping", lineno)
                     continue
@@ -343,7 +389,11 @@ class FusionSpool:
                 except json.JSONDecodeError:
                     corrupt += 1
                     continue
-                inner = {"contributor": record.get("contributor", ""), "event_type": record.get("event_type", ""), "payload": record.get("payload", {})}
+                inner = {
+                    "contributor": record.get("contributor", ""),
+                    "event_type": record.get("event_type", ""),
+                    "payload": record.get("payload", {}),
+                }
                 if record.get("checksum") == _checksum_hex(inner):
                     healthy += 1
                 else:
@@ -359,20 +409,34 @@ class FusionSpool:
         for row in rows:
             raw_payload = json.loads(row["payload"])
             payload = _redact(raw_payload)
-            expected_cs = _checksum_hex({
-                "contributor": row["contributor"], "event_type": row["event_type"], "payload": raw_payload,
-            })
-            events.append({
-                "seq": int(row["seq"]), "contributor": row["contributor"],
-                "event_type": row["event_type"], "payload": payload,
-                "idempotency_key": row["idempotency_key"], "timestamp": row["timestamp"],
-                "checksum_ok": row["checksum"] == expected_cs,
-            })
+            expected_cs = _checksum_hex(
+                {
+                    "contributor": row["contributor"],
+                    "event_type": row["event_type"],
+                    "payload": raw_payload,
+                }
+            )
+            events.append(
+                {
+                    "seq": int(row["seq"]),
+                    "contributor": row["contributor"],
+                    "event_type": row["event_type"],
+                    "payload": payload,
+                    "idempotency_key": row["idempotency_key"],
+                    "timestamp": row["timestamp"],
+                    "checksum_ok": row["checksum"] == expected_cs,
+                }
+            )
             if limit and len(events) >= limit:
                 break
 
         latest_snap = self.get_snapshot(latest=True)
-        watermarks = [dict(w) for w in self._conn.execute("SELECT * FROM watermarks ORDER BY contributor").fetchall()]
+        watermarks = [
+            dict(w)
+            for w in self._conn.execute(
+                "SELECT * FROM watermarks ORDER BY contributor"
+            ).fetchall()
+        ]
         synced_keys = set(self.list_synced_keys())
 
         return {
@@ -392,7 +456,7 @@ class FusionSpool:
         *,
         from_seq: int = 1,
         contributor: str | None = None,
-        to_spool: "FusionSpool | None" = None,
+        to_spool: FusionSpool | None = None,
     ) -> list[dict[str, Any]]:
         """Replay events for migration or idempotent re-ingest."""
         q = "SELECT * FROM events WHERE seq >= ?"

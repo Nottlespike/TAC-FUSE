@@ -17,10 +17,11 @@ from tac_fuse.foundry.config import (
     FoundryConnectionConfig,
     FoundryOAuthConfig,
     MavenFoundryConfig,
+    can_upload,
+    has_upload_credentials,
     load_maven_foundry_config,
     redacted_summary,
 )
-
 
 # -- Fixtures -------------------------------------------------------------------
 
@@ -148,7 +149,7 @@ class TestMavenFoundryConfig:
 
     def test_frozen(self) -> None:
         cfg = self._make()
-        with pytest.raises(Exception):
+        with pytest.raises((TypeError, ValueError)):
             cfg.ontology_name = "changed"  # type: ignore[misc]
 
 
@@ -287,7 +288,7 @@ class TestLoadMavenFoundryConfig:
         assert cfg.connection.oauth.client_id == "env-cid"
         assert cfg.connection.token == ""
 
-    def test_partial_oauth_raises(
+    def test_partial_oauth_raises_in_strict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("FOUNDRY_HOSTNAME", "https://h")
@@ -300,7 +301,28 @@ class TestLoadMavenFoundryConfig:
         monkeypatch.setenv("FOUNDRY_EVENTS_DATASET_RID", "ri-ds-2")
         monkeypatch.setenv("FOUNDRY_MEDIA_SET_RID", "ri-ms-1")
         with pytest.raises(ValueError, match="All three"):
-            load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+            load_maven_foundry_config(
+                Path("/nonexistent/maven_api.yaml"), strict=True
+            )
+
+    def test_partial_oauth_non_strict_does_not_block_local_c2(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Partial OAuth env vars must never crash local C2 when strict=False."""
+        monkeypatch.setenv("FOUNDRY_HOSTNAME", "https://h")
+        monkeypatch.setenv("FOUNDRY_TOKEN", "pat-ok")
+        monkeypatch.setenv("OAUTH_CLIENT_ID", "only-id")
+        monkeypatch.delenv("OAUTH_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("OAUTH_TOKEN_URL", raising=False)
+        monkeypatch.setenv("MAVEN_ONTOLOGY_NAME", "maven")
+        monkeypatch.setenv("FOUNDRY_MISSION_DATASET_RID", "ri-ds-1")
+        monkeypatch.setenv("FOUNDRY_EVENTS_DATASET_RID", "ri-ds-2")
+        monkeypatch.setenv("FOUNDRY_MEDIA_SET_RID", "ri-ms-1")
+        # Should NOT raise -- partial OAuth is ignored gracefully
+        cfg = load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+        assert cfg is not None
+        assert cfg.connection.token == "pat-ok"
+        assert cfg.connection.oauth is None  # partial OAuth ignored
 
     def test_missing_hostname_raises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -308,7 +330,7 @@ class TestLoadMavenFoundryConfig:
         for key in FAKE_ENV:
             monkeypatch.delenv(key, raising=False)
         with pytest.raises(ValueError, match="hostname"):
-            load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+            load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"), strict=True)
 
     def test_missing_auth_raises(
         self, monkeypatch: pytest.MonkeyPatch
@@ -318,7 +340,7 @@ class TestLoadMavenFoundryConfig:
         for key in ("OAUTH_CLIENT_ID", "OAUTH_CLIENT_SECRET", "OAUTH_TOKEN_URL"):
             monkeypatch.delenv(key, raising=False)
         with pytest.raises(ValueError, match="auth mechanism"):
-            load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+            load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"), strict=True)
 
     def test_default_yaml_path(self) -> None:
         assert DEFAULT_MAVEN_API_YAML.name == "maven_api.yaml"
@@ -335,3 +357,134 @@ class TestLoadMavenFoundryConfig:
         cfg = load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
         assert "datasets:write" in cfg.requested_scopes
         assert "ontology:write" in cfg.requested_scopes
+
+
+# -- Upload credential gate tests -----------------------------------------------
+
+
+class TestHasUploadCredentials:
+    def test_none_config_returns_false(self) -> None:
+        assert has_upload_credentials(None) is False
+
+    def test_no_hostname_returns_false(self) -> None:
+        cfg = MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="", token="t"),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+        assert has_upload_credentials(cfg) is False
+
+    def test_hostname_plus_pat_returns_true(self) -> None:
+        cfg = MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="https://h", token="t"),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+        assert has_upload_credentials(cfg) is True
+
+    def test_hostname_plus_complete_oauth_returns_true(self) -> None:
+        oauth = FoundryOAuthConfig(
+            client_id="cid", client_secret="csecret", token_url="https://t"
+        )
+        cfg = MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="https://h", token="", oauth=oauth),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+        assert has_upload_credentials(cfg) is True
+
+    def test_hostname_no_token_no_oauth_returns_false(self) -> None:
+        cfg = MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="https://h", token=""),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+        assert has_upload_credentials(cfg) is False
+
+
+class TestCanUpload:
+    """Test the unified upload gate (connectivity + credentials)."""
+
+    def _make_config(self) -> MavenFoundryConfig:
+        return MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="https://h", token="t"),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+
+    def test_online_with_credentials_allows_upload(self) -> None:
+        assert can_upload(self._make_config(), sync_allowed=True) is True
+
+    def test_offline_blocks_upload_even_with_credentials(self) -> None:
+        assert can_upload(self._make_config(), sync_allowed=False) is False
+
+    def test_online_without_config_blocks_upload(self) -> None:
+        assert can_upload(None, sync_allowed=True) is False
+
+    def test_online_without_credentials_blocks_upload(self) -> None:
+        cfg = MavenFoundryConfig(
+            connection=FoundryConnectionConfig(hostname="https://h", token=""),
+            ontology_name="maven",
+            mission_dataset_rid="ri-ds-1",
+            events_dataset_rid="ri-ds-2",
+            media_set_rid="ri-ms-1",
+        )
+        assert can_upload(cfg, sync_allowed=True) is False
+
+    def test_offline_without_config_blocks_upload(self) -> None:
+        assert can_upload(None, sync_allowed=False) is False
+
+
+class TestExportWithoutConfig:
+    """Verify exports always work from local state regardless of Foundry config."""
+
+    def test_export_works_with_no_foundry_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tac_fuse.foundry_export import build_foundry_export
+        from tac_fuse.mission_state import MissionStateStore
+
+        # No Foundry env vars at all
+        for key in FAKE_ENV:
+            monkeypatch.delenv(key, raising=False)
+
+        cfg = load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+        assert cfg is None  # no config available
+        assert has_upload_credentials(cfg) is False
+
+        # But local C2 export still works
+        store = MissionStateStore()
+        store.create_task(title="Disconnected patrol")
+        export = build_foundry_export(store)
+        assert len(export["operator_tasks"]) == 1
+        assert export["operator_tasks"][0]["title"] == "Disconnected patrol"
+
+    def test_export_works_with_empty_hostname_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tac_fuse.foundry_export import build_foundry_export
+        from tac_fuse.mission_state import MissionStateStore
+
+        # Only hostname, no auth
+        monkeypatch.setenv("FOUNDRY_HOSTNAME", "")
+        monkeypatch.delenv("FOUNDRY_TOKEN", raising=False)
+        for key in FAKE_ENV:
+            if key != "FOUNDRY_HOSTNAME":
+                monkeypatch.delenv(key, raising=False)
+
+        cfg = load_maven_foundry_config(Path("/nonexistent/maven_api.yaml"))
+        assert cfg is None
+        assert can_upload(cfg, sync_allowed=True) is False
+
+        # Local export still works
+        store = MissionStateStore()
+        store.create_task(title="Air-gapped recon")
+        export = build_foundry_export(store)
+        assert len(export["operator_tasks"]) == 1
+        assert export["operator_tasks"][0]["title"] == "Air-gapped recon"

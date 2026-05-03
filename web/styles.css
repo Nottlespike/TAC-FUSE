@@ -28,7 +28,7 @@ body {
 
 .topbar {
     display: grid;
-    grid-template-columns: minmax(220px, 0.8fr) minmax(420px, 1.2fr) minmax(260px, 0.9fr);
+    grid-template-columns: minmax(220px, 0.8fr) minmax(240px, 1.1fr) minmax(420px, 1.3fr) minmax(260px, 0.9fr);
     gap: 18px;
     align-items: center;
     min-height: 54px;
@@ -50,6 +50,49 @@ body {
 .brand strong {
     font-size: 18px;
     letter-spacing: 0.02em;
+}
+
+.connectivity-switcher {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: center;
+}
+
+.conn-btn {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #23323a;
+    color: var(--muted);
+    padding: 4px 9px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.conn-btn:hover {
+    background: #2e404a;
+    color: var(--text);
+}
+
+.conn-btn.active[data-mode="offline"] {
+    background: #14251f;
+    color: var(--accent);
+    border-color: #2a6e57;
+}
+
+.conn-btn.active[data-mode="degraded"] {
+    background: #3b3218;
+    color: var(--warn);
+    border-color: #6f6124;
+}
+
+.conn-btn.active[data-mode="online"] {
+    background: #1c2b3f;
+    color: var(--blue);
+    border-color: #3a5a80;
 }
 
 .top-metrics {
@@ -170,6 +213,13 @@ body {
     padding: 3px 7px;
     border-radius: 999px;
     font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.feed-latency.compact {
+    font-size: 10px;
+    padding: 1px 5px;
 }
 
 .feed-latency.good {
@@ -235,6 +285,18 @@ body {
     background: #14251f;
     color: var(--accent);
     border-color: #2a6e57;
+}
+
+.mode-pill.degraded {
+    background: #3b3218;
+    color: var(--warn);
+    border-color: #6f6124;
+}
+
+.mode-pill.online {
+    background: #1c2b3f;
+    color: var(--blue);
+    border-color: #3a5a80;
 }
 
 .status-chip.local {

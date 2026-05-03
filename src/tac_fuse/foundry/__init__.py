@@ -7,6 +7,8 @@ from tac_fuse.foundry.config import (
     FoundryConnectionConfig,
     FoundryOAuthConfig,
     MavenFoundryConfig,
+    can_upload,
+    has_upload_credentials,
     load_maven_foundry_config,
     redacted_summary,
 )
@@ -16,6 +18,8 @@ __all__ = [
     "FoundryConnectionConfig",
     "FoundryOAuthConfig",
     "MavenFoundryConfig",
+    "can_upload",
+    "has_upload_credentials",
     "load_maven_foundry_config",
     "redacted_summary",
 ]

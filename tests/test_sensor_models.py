@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import random
-from datetime import UTC, datetime
-
 import pytest
 
 from tac_fuse.fusion_node.ingest import ContributorSource
@@ -170,6 +166,7 @@ class TestIRThermalEmulator:
             sensor_id="ir_cam_001",
             platform_id="drone_001",
             seed=42,
+            drop_rate=0.0,
         )
         emulator = IRThermalEmulator(config)
         obs = emulator.emulate(frame_index=0)
@@ -185,6 +182,7 @@ class TestIRThermalEmulator:
             sensor_id="ir_cam_001",
             platform_id="drone_001",
             seed=42,
+            drop_rate=0.0,
         )
         emulator1 = IRThermalEmulator(config)
         emulator2 = IRThermalEmulator(config)
@@ -442,7 +440,7 @@ class TestDeterminism:
         obs1 = multi1.emulate_all(frame_index=0)
         obs2 = multi2.emulate_all(frame_index=0)
 
-        for o1, o2 in zip(obs1, obs2):
+        for o1, o2 in zip(obs1, obs2, strict=True):
             assert o1.observation_id == o2.observation_id
             assert o1.confidence == o2.confidence
             assert o1.data == o2.data
@@ -454,7 +452,7 @@ class TestDeterminism:
         obs0 = multi.emulate_all(frame_index=0)
         obs1 = multi.emulate_all(frame_index=1)
 
-        for o0, o1 in zip(obs0, obs1):
+        for o0, o1 in zip(obs0, obs1, strict=True):
             assert o0.observation_id != o1.observation_id
 
     def test_multiple_frames_sequence(self) -> None:
@@ -465,7 +463,7 @@ class TestDeterminism:
         for frame_idx in range(5):
             obs1 = multi1.emulate_all(frame_index=frame_idx)
             obs2 = multi2.emulate_all(frame_index=frame_idx)
-            for o1, o2 in zip(obs1, obs2):
+            for o1, o2 in zip(obs1, obs2, strict=True):
                 assert o1.observation_id == o2.observation_id
 
 

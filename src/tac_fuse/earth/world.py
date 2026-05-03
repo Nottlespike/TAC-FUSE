@@ -9,12 +9,11 @@ Provides a Google-Earth-style tactical scene emulator with:
 - Deterministic time-step state for offline replay
 """
 
+import hashlib
 import json
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
-import hashlib
 
 
 @dataclass
@@ -23,14 +22,14 @@ class TerrainSample:
     elevation: float  # meters above WGS84 ellipsoid
     slope: float      # gradient magnitude (rise/run, unitless)
     landcover: int    # integer code representing landcover type
-    obstacle_id: Optional[int] = None  # ID if obstacle present, else None
+    obstacle_id: int | None = None  # ID if obstacle present, else None
 
 
 @dataclass
 class WorldState:
     """Deterministic state of the world at a specific time."""
     time: float
-    terrain_samples: Dict[Tuple[int, int], TerrainSample] = field(default_factory=dict)
+    terrain_samples: dict[tuple[int, int], TerrainSample] = field(default_factory=dict)
     # Additional dynamic state can be added here (e.g., moving objects)
 
 
@@ -57,7 +56,7 @@ class World:
         origin_lat: float,
         origin_lon: float,
         origin_alt: float = 0.0,
-        fixture_path: Optional[str] = None,
+        fixture_path: str | None = None,
         world_extent_meters: float = 500.0,
         time_start: float = 0.0
     ):
@@ -86,7 +85,7 @@ class World:
         self.cos_lat = math.cos(self.origin_lat_rad)
         
         # Initialize terrain samples
-        self.terrain_samples: Dict[Tuple[int, int], TerrainSample] = {}
+        self.terrain_samples: dict[tuple[int, int], TerrainSample] = {}
         
         # Load fixture if provided and exists, otherwise generate procedural
         if fixture_path and os.path.exists(fixture_path):
@@ -115,7 +114,7 @@ class World:
         }
         """
         try:
-            with open(fixture_path, 'r') as f:
+            with open(fixture_path) as f:
                 data = json.load(f)
             
             # Override extent if specified in fixture
@@ -225,8 +224,6 @@ class World:
         # Sample points at +/- grid_spacing in each direction
         eps = grid_spacing
         
-        z_center = self._hash_noise(east, north, seed, 0.1, 20.0)
-        
         z_east = self._hash_noise(east + eps, north, seed, 0.1, 20.0)
         z_west = self._hash_noise(east - eps, north, seed, 0.1, 20.0)
         z_north = self._hash_noise(east, north + eps, seed, 0.1, 20.0)
@@ -263,7 +260,7 @@ class World:
         lat: float, 
         lon: float, 
         alt: float
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """
         Convert WGS84 latitude, longitude, altitude to local ENU coordinates.
         
@@ -292,7 +289,7 @@ class World:
         east: float, 
         north: float, 
         up: float
-    ) -> Tuple[float, float, float]:
+    ) -> tuple[float, float, float]:
         """
         Convert local ENU coordinates to WGS84 latitude, longitude, altitude.
         
@@ -316,7 +313,7 @@ class World:
         self, 
         east: float, 
         north: float
-    ) -> Optional[TerrainSample]:
+    ) -> TerrainSample | None:
         """
         Get terrain sample at the given ENU coordinates.
         
@@ -339,7 +336,7 @@ class World:
         
         return self.terrain_samples.get((grid_x, grid_y))
     
-    def get_world_extents(self) -> Tuple[float, float, float, float]:
+    def get_world_extents(self) -> tuple[float, float, float, float]:
         """
         Get world extents in ENU meters.
         

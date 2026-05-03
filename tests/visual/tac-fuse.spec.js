@@ -31,10 +31,11 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await page.goto(demoUrl);
   await page.waitForTimeout(900);
 
-  await expect(page.locator("#pov-title")).toContainText("POV");
-  await expect(page.locator(".capability-strip")).toContainText("Laptop fusion node");
-  await expect(page.locator("#field-condition-label")).toContainText(/feeds fused/);
+  await expect(page.locator("#pov-title")).toContainText("POV Feed");
+  await expect(page.locator("#mode-status")).toContainText("FUSION NODE AUTHORITY");
   await expect(page.locator("#npu-label")).not.toContainText(/NPU|Intel/i);
+  await expect(page.locator("#asset-list .feed-latency").first()).toHaveText(/^\d{1,3} ms$/);
+  await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();
@@ -45,8 +46,13 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(metricsBox).not.toBeNull();
   expect(povBox).not.toBeNull();
   expect(lowerGridBox).not.toBeNull();
-  expect(metricsBox.height).toBeLessThan(commandBox.height * 0.75);
-  expect(povBox.height).toBeGreaterThan(lowerGridBox.height * 1.15);
+  expect(commandBox.width).toBeGreaterThan(120);
+  expect(commandBox.height).toBeGreaterThan(120);
+  expect(metricsBox.width).toBeGreaterThan(240);
+  expect(metricsBox.height).toBeGreaterThan(120);
+  expect(povBox.width).toBeGreaterThan(520);
+  expect(povBox.height).toBeGreaterThan(280);
+  expect(lowerGridBox.height).toBeGreaterThan(200);
 
   const first = await canvasHash(page, "#pov-canvas");
   await page.waitForTimeout(900);
@@ -55,6 +61,10 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(first.litPixels).toBeGreaterThan(250);
   expect(first.variedPixels).toBeGreaterThan(180);
   expect(second.hash).not.toBe(first.hash);
+
+  await page.locator("#mode-degraded").click();
+  await expect(page.locator("#mode-status")).toContainText("LOCAL C2 ACTIVE");
+  await expect(page.locator("#mode-degraded")).toHaveClass(/active/);
 
   await page.screenshot({
     path: "test-results/tac-fuse-operator-desktop.png",

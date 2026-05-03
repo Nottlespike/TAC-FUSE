@@ -1,4 +1,10 @@
-"""Foundry-compatible local export helpers."""
+"""Foundry-compatible local export helpers.
+
+LOCAL C2 STATE-FIRST GUARANTEE:
+All export functions read from MissionStateStore, which persists operator commands
+to local SQLite state, audit log, and outbound sync queue BEFORE any export path
+can run. Exports are deterministic, offline artifacts derived from persisted state.
+"""
 
 from __future__ import annotations
 

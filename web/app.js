@@ -131,7 +131,7 @@ const groundTeam = {
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
-let rayPath = "rtx";
+let rayPath = "cpu";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -142,6 +142,17 @@ let spoolDepth = 0;         // offline spool buffer depth
 let syncWatermark = 0;      // timestamp of last staged sync
 let syncStaged = false;     // whether a packet is staged for gate
 
+const CONNECTIVITY_LABELS = {
+  offline: "FUSION NODE AUTHORITY",
+  degraded: "LOCAL C2 ACTIVE",
+  online: "ENTERPRISE SYNC ENABLED",
+};
+const CONNECTIVITY_CLASSES = {
+  offline: "offline",
+  degraded: "degraded",
+  online: "online",
+};
+
 const swarmCanvas = document.querySelector("#swarm-map");
 const swarmCtx = swarmCanvas.getContext("2d");
 const povCanvas = document.querySelector("#pov-canvas");
@@ -151,6 +162,24 @@ const overlay = document.querySelector("#pov-overlay");
 function setText(selector, text) {
   const element = document.querySelector(selector);
   if (element) element.textContent = text;
+}
+
+function latencyClass(latencyMs) {
+  return latencyMs < 50 ? "good" : latencyMs < 100 ? "watch" : "critical";
+}
+
+function formatLatencyMs(latencyMs) {
+  const ms = Math.max(0, latencyMs);
+  if (ms >= 1000) {
+    const seconds = ms / 1000;
+    return `${seconds >= 10 ? Math.round(seconds) : seconds.toFixed(1)} s`;
+  }
+  if (ms < 10) return `${ms.toFixed(1)} ms`;
+  return `${Math.round(ms).toLocaleString()} ms`;
+}
+
+function formatMeters(meters) {
+  return `${Math.round(meters).toLocaleString()} m`;
 }
 
 earthImagery.image.onload = () => {
@@ -729,59 +758,21 @@ function drawPov(feed, visible) {
   povCtx.fillStyle = sky;
   povCtx.fillRect(0, 0, width, horizon);
 
-  const terrain = povCtx.createLinearGradient(0, horizon, 0, height);
-  terrain.addColorStop(0, "#2a3625");
-  terrain.addColorStop(1, "#121812");
-  povCtx.fillStyle = terrain;
-  povCtx.fillRect(0, horizon, width, height - horizon);
+  drawPovLocalTerrain(feed, width, height, horizon);
 
-  if (earthImagery.ready) {
-    povCtx.save();
-    povCtx.globalAlpha = 0.28;
-    const cropY = Math.floor(earthImagery.image.naturalHeight * 0.48);
-    const cropH = Math.floor(earthImagery.image.naturalHeight * 0.36);
-    povCtx.drawImage(
-      earthImagery.image,
-      0,
-      cropY,
-      earthImagery.image.naturalWidth,
-      cropH,
-      0,
-      horizon,
-      width,
-      height - horizon,
-    );
-    povCtx.restore();
-  }
-
-  povCtx.fillStyle = "rgba(55, 74, 70, 0.55)";
+  povCtx.fillStyle = "rgba(45, 66, 57, 0.72)";
   povCtx.beginPath();
   povCtx.moveTo(0, horizon);
   for (let i = 0; i <= 8; i += 1) {
     const x = (i / 8) * width;
-    const y = horizon - Math.sin(i * 1.7) * 28 - 34;
+    const y = horizon - Math.sin(i * 1.7 + feed.x * 0.01) * 22 - 30;
     povCtx.lineTo(x, y);
   }
   povCtx.lineTo(width, horizon);
   povCtx.closePath();
   povCtx.fill();
 
-  povCtx.strokeStyle = "#e6c35c";
-  povCtx.lineWidth = 2;
-  povCtx.beginPath();
-  povCtx.moveTo(0, horizon);
-  povCtx.lineTo(width, horizon);
-  povCtx.stroke();
-
-  povCtx.fillStyle = "rgba(230,195,92,0.1)";
-  povCtx.beginPath();
-  povCtx.moveTo(width * 0.42, height);
-  povCtx.lineTo(width * 0.49, horizon);
-  povCtx.lineTo(width * 0.53, horizon);
-  povCtx.lineTo(width * 0.68, height);
-  povCtx.closePath();
-  povCtx.fill();
-
+  drawPovCorridor(width, height, horizon);
   drawReticle(width, height);
   drawPovTelemetry(feed, width, height);
   overlay.innerHTML = "";
@@ -814,6 +805,89 @@ function drawPov(feed, visible) {
   }
 }
 
+function drawPovLocalTerrain(feed, width, height, horizon) {
+  const terrain = povCtx.createLinearGradient(0, horizon, 0, height);
+  terrain.addColorStop(0, "#253d34");
+  terrain.addColorStop(0.52, "#1c2b22");
+  terrain.addColorStop(1, "#0e1411");
+  povCtx.fillStyle = terrain;
+  povCtx.fillRect(0, horizon, width, height - horizon);
+
+  const vanishingX = width * 0.5 + Math.sin((feed.heading * Math.PI) / 180) * width * 0.12;
+  const motion = simTime * 0.28 + feed.y * 0.004;
+
+  povCtx.save();
+  povCtx.strokeStyle = "rgba(245, 241, 232, 0.16)";
+  povCtx.lineWidth = 1;
+  for (let i = 1; i <= 8; i += 1) {
+    const t = i / 8;
+    const y = horizon + (height - horizon) * t ** 1.75;
+    const offset = Math.sin(motion + i * 0.8) * 10;
+    povCtx.beginPath();
+    povCtx.moveTo(0, y + offset);
+    povCtx.lineTo(width, y - offset * 0.5);
+    povCtx.stroke();
+  }
+
+  for (let x = -width * 0.25; x <= width * 1.25; x += width / 8) {
+    povCtx.beginPath();
+    povCtx.moveTo(vanishingX, horizon + 10);
+    povCtx.lineTo(x + Math.sin(motion + x * 0.01) * 18, height);
+    povCtx.stroke();
+  }
+
+  for (const hazard of hazards) {
+    const dx = hazard.x - feed.x;
+    const dy = hazard.y - feed.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > 520) continue;
+
+    const bearing = Math.atan2(dy, dx) - (feed.heading * Math.PI) / 180;
+    const x = width * (0.5 + Math.sin(bearing) * 0.42);
+    const y = horizon + (distance / 520) * (height - horizon) * 0.8;
+    const radius = Math.max(20, ((520 - distance) / 520) * 90);
+    const critical = hazard.severity === "critical";
+    povCtx.fillStyle = critical ? "rgba(255, 93, 93, 0.14)" : "rgba(230, 195, 92, 0.12)";
+    povCtx.strokeStyle = critical ? "rgba(255, 93, 93, 0.48)" : "rgba(230, 195, 92, 0.42)";
+    povCtx.beginPath();
+    povCtx.ellipse(x, y, radius * 1.5, radius * 0.38, 0, 0, Math.PI * 2);
+    povCtx.fill();
+    povCtx.stroke();
+  }
+  povCtx.restore();
+}
+
+function drawPovCorridor(width, height, horizon) {
+  const vanishY = horizon + 12;
+  povCtx.fillStyle = "rgba(230,195,92,0.12)";
+  povCtx.beginPath();
+  povCtx.moveTo(width * 0.34, height);
+  povCtx.lineTo(width * 0.47, vanishY);
+  povCtx.lineTo(width * 0.53, vanishY);
+  povCtx.lineTo(width * 0.68, height);
+  povCtx.closePath();
+  povCtx.fill();
+
+  povCtx.strokeStyle = "rgba(230,195,92,0.72)";
+  povCtx.lineWidth = 2;
+  povCtx.beginPath();
+  povCtx.moveTo(width * 0.34, height);
+  povCtx.lineTo(width * 0.47, vanishY);
+  povCtx.moveTo(width * 0.68, height);
+  povCtx.lineTo(width * 0.53, vanishY);
+  povCtx.moveTo(0, horizon);
+  povCtx.lineTo(width, horizon);
+  povCtx.stroke();
+
+  povCtx.strokeStyle = "rgba(230,195,92,0.3)";
+  povCtx.setLineDash([8, 10]);
+  povCtx.beginPath();
+  povCtx.moveTo(width * 0.5, height);
+  povCtx.lineTo(width * 0.5, vanishY);
+  povCtx.stroke();
+  povCtx.setLineDash([]);
+}
+
 function drawReticle(width, height) {
   povCtx.strokeStyle = "rgba(242, 239, 229, 0.55)";
   povCtx.lineWidth = 1;
@@ -834,8 +908,8 @@ function drawPovTelemetry(feed, width, height) {
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
   povCtx.fillText(`${feed.callsign} ${feed.command.toUpperCase()}`, 32, 42);
-  povCtx.fillText(`HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${Math.round(feed.z)}m`, 32, 66);
-  povCtx.fillText(`SPD ${Math.round(feed.speed)}m/s  BAT ${Math.round(feed.battery)}%`, 32, 88);
+  povCtx.fillText(`HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${formatMeters(feed.z)}`, 32, 66);
+  povCtx.fillText(`SPD ${Math.round(feed.speed)} m/s  BAT ${Math.round(feed.battery)}%`, 32, 88);
 }
 
 function renderFeeds() {
@@ -844,11 +918,12 @@ function renderFeeds() {
       const hit = bvhQuery(feed).find((item) => item.severity === "critical" && item.distance < item.radius);
       const dotClass = hit ? "critical" : feed.battery < 70 ? "warn" : "";
       const selected = feed.id === selectedId ? "selected" : "";
-      const latClass = feed.latency < 50 ? "good" : feed.latency < 100 ? "watch" : "critical";
+      const latClass = latencyClass(feed.latency);
+      const latency = formatLatencyMs(feed.latency);
       return `<button class="asset-row ${selected}" data-feed="${feed.id}">
         <div>
           <strong>${feed.callsign}</strong>
-          <div class="asset-meta">${feed.command} · ${Math.round(feed.z)}m · ${Math.round(feed.battery)}% · <span class="feed-latency ${latClass}" style="font-size:10px;padding:1px 5px">${feed.latency}ms</span></div>
+          <div class="asset-meta">${feed.command} · ${formatMeters(feed.z)} · ${Math.round(feed.battery)}% · <span class="feed-latency compact ${latClass}">${latency}</span></div>
         </div>
         <span class="asset-dot ${dotClass}"></span>
       </button>`;
@@ -874,9 +949,10 @@ function renderFeedQuality() {
     .map((feed) => {
       const freshPct = Math.round(feed.freshness * 100);
       const confPct = Math.round(feed.confidence * 100);
-      const latClass = feed.latency < 50 ? "good" : feed.latency < 100 ? "watch" : "critical";
+      const latClass = latencyClass(feed.latency);
+      const latency = formatLatencyMs(feed.latency);
       return `<div class="feed-row">
-        <div class="feed-header"><strong>${feed.callsign}</strong><span class="feed-latency ${latClass}">${feed.latency}ms</span></div>
+        <div class="feed-header"><strong>${feed.callsign}</strong><span class="feed-latency ${latClass}">${latency}</span></div>
         <div class="feed-metrics">
           <div class="metric-bar"><span class="metric-label">Fresh</span><div class="bar-track"><span class="bar-fill" style="width:${freshPct}%"></span></div></div>
           <div class="metric-bar"><span class="metric-label">Conf</span><div class="bar-track"><span class="bar-fill" style="width:${confPct}%"></span></div></div>
@@ -900,12 +976,12 @@ function renderStagedPacket() {
 
 function renderHardware(feed, hits) {
   const status = modeCopy();
-  const bvhMs = rayPath === "rtx" ? 1.4 + hits.length * 0.16 : 8.8 + hits.length * 0.7;
+  const bvhMs = 8.8 + hits.length * 0.7;
   const rows = [
     ["Fusion authority", "laptop-local sensor fusion", "good"],
     ["Earth AOI", earthImagery.ready ? "cached raster tile" : "procedural estimate", earthImagery.ready ? "good" : "watch"],
     ["Terrain mesh", `${terrainTriangleCount()} triangles`, "good"],
-    ["Collision BVH", `${hits.length} checks · ${bvhMs.toFixed(1)}ms`, rayPath === "rtx" ? "good" : "watch"],
+    ["Collision BVH", `${hits.length} checks · ${formatLatencyMs(bvhMs)}`, "good"],
     ["Spool buffer", `${spoolDepth} staged for gate`, spoolDepth > 0 ? "watch" : "good"],
     ["Sync watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "watch" : "good"],
   ];
@@ -915,8 +991,8 @@ function renderHardware(feed, hits) {
         `<div class="status-row"><div><strong>${name}</strong><div class="status-detail">${detail}</div></div><span class="status-chip ${kind}">${kind}</span></div>`,
     )
     .join("");
-  setText("#bvh-label", rayPath === "rtx" ? "terrain BVH" : "CPU route check");
-  setText("#fusion-badge", rayPath === "rtx" ? "Terrain BVH active" : "CPU collision parity");
+  setText("#bvh-label", "CPU route check");
+  setText("#fusion-badge", "CPU collision parity");
   setText(
     "#map-hud-copy",
     earthImagery.ready
@@ -924,7 +1000,7 @@ function renderHardware(feed, hits) {
       : "Terrain from procedural estimate; awaiting cache",
   );
   setText("#range-label", `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`);
-  setText("#pov-title", `${feed.callsign} Feed`);
+  setText("#pov-title", `${feed.callsign} POV Feed`);
 }
 
 function renderVision(scores) {
@@ -957,8 +1033,8 @@ function renderAlerts(feed, hits, scores) {
 function updateModeChrome() {
   const status = modeCopy();
   const pill = document.querySelector("#mode-status");
-  pill.textContent = "FUSION NODE AUTHORITY";
-  pill.className = "mode-pill offline";
+  pill.textContent = CONNECTIVITY_LABELS[connectivityMode];
+  pill.className = `mode-pill ${CONNECTIVITY_CLASSES[connectivityMode]}`;
   setText("#sync-count", String(status.sync));
   setText("#sync-watermark", `watermark T+${status.watermark.toFixed(1)}s`);
   setText("#clock-label", `T+${simTime.toFixed(1)}s`);
@@ -967,6 +1043,36 @@ function updateModeChrome() {
     syncPill.textContent = spoolDepth > 0 ? `${spoolDepth} staged` : "sync idle";
     syncPill.classList.toggle("staged", spoolDepth > 0);
   }
+  // Sync gate: disable release button unless in ONLINE mode
+  const syncBtn = document.querySelector("#sync-now");
+  if (syncBtn) {
+    syncBtn.disabled = connectivityMode !== "online";
+    syncBtn.title = connectivityMode === "online"
+      ? "Release staged commands to enterprise"
+      : `${connectivityMode.toUpperCase()} mode: enterprise sync blocked`;
+  }
+  // Update operator-gated copy based on mode
+  const syncStatus = document.querySelector("#sync-status");
+  if (syncStatus) {
+    if (connectivityMode === "offline") {
+      syncStatus.textContent = "OFFLINE: sync gate closed · enterprise unreachable";
+    } else if (connectivityMode === "degraded") {
+      syncStatus.textContent = "DEGRADED: sync gate closed · commands queued for reconnect";
+    } else {
+      syncStatus.textContent = "ONLINE: sync gate open · press Release to sync";
+    }
+  }
+  // Update mode buttons active state
+  document.querySelectorAll(".conn-btn").forEach((btn) => {
+    const isActive = btn.dataset.mode === connectivityMode;
+    btn.classList.toggle("active", isActive);
+  });
+}
+
+function renderMissionLog() {
+  document.querySelector("#mission-log").innerHTML = missionLog
+    .map((entry) => `<div class="log-row">${entry}</div>`)
+    .join("");
 }
 
 function renderFrame() {
@@ -982,6 +1088,7 @@ function renderFrame() {
   renderHardware(feed, hits);
   renderVision(scores);
   renderAlerts(feed, hits, scores);
+  renderMissionLog();
   updateModeChrome();
   document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "One feed within fused multi-source view";
   document.querySelector("#field-condition-label").textContent = scores[0][0];
@@ -1043,6 +1150,22 @@ document.querySelector("#toggle-bvh").addEventListener("click", () => {
     `Collision/path solver switched to ${rayPath === "rtx" ? "RT core acceleration" : "CPU parity"} locally.`,
   );
 });
+
+function setConnectivityMode(mode) {
+  connectivityMode = mode;
+  if (mode === "offline") {
+    pushLog("Mode OFFLINE: Local C2 active, enterprise sync blocked.");
+  } else if (mode === "degraded") {
+    pushLog("Mode DEGRADED: Local C2 active, sync queue held, awaiting connectivity.");
+  } else {
+    pushLog("Mode ONLINE: Enterprise sync gate open.");
+  }
+  renderFrame();
+}
+
+document.querySelector("#mode-offline").addEventListener("click", () => setConnectivityMode("offline"));
+document.querySelector("#mode-degraded").addEventListener("click", () => setConnectivityMode("degraded"));
+document.querySelector("#mode-online").addEventListener("click", () => setConnectivityMode("online"));
 
 pushLog("Fusion node started; laptop-local authority active.");
 requestAnimationFrame(tick);

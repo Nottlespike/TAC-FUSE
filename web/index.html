@@ -12,6 +12,11 @@
             <strong>TAC-FUSE</strong>
             <span id="mode-status" class="mode-pill offline">FUSION NODE AUTHORITY</span>
         </div>
+        <div class="connectivity-switcher" aria-label="Connectivity mode control">
+            <button id="mode-offline" data-mode="offline" class="conn-btn active" title="OFFLINE: Local C2 only, no enterprise sync">OFFLINE</button>
+            <button id="mode-degraded" data-mode="degraded" class="conn-btn" title="DEGRADED: Local C2, sensor fusion active, queued sync">DEGRADED</button>
+            <button id="mode-online" data-mode="online" class="conn-btn" title="ONLINE: Enterprise sync enabled">ONLINE</button>
+        </div>
         <div class="feed-summary" aria-label="Contributor feed summary">
             <span class="feed-pill" id="feed-count">4 feeds</span>
             <span class="feed-pill" id="feed-freshness">fresh</span>
@@ -129,6 +134,10 @@
                         <button id="sync-now" class="command-btn">Release Staged Packet</button>
                         <div id="sync-status" class="sync-status subtle">No connection required for local operations</div>
                     </div>
+                </section>
+                <section class="panel wide">
+                    <h2>Mission Log</h2>
+                    <div id="mission-log" class="mission-log compact-log"></div>
                 </section>
             </div>
         </section>

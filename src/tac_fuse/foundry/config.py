@@ -34,11 +34,17 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
-
 # ── Package-relative default config path ─────────────────────────────────────
 _CONFIG_NAME = "maven_api.yaml"
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]  # project root (…/TAC-FUSE)
 DEFAULT_MAVEN_API_YAML = _PACKAGE_ROOT / "configs" / "foundry" / _CONFIG_NAME
+DEFAULT_REQUESTED_SCOPES = (
+    "datasets:write",
+    "streams:write",
+    "media-sets:write",
+    "ontology:read",
+    "ontology:write",
+)
 
 
 # ── Sub-models ────────────────────────────────────────────────────────────────
@@ -106,13 +112,7 @@ class MavenFoundryConfig(BaseModel, frozen=True):
 
     # ── Scopes ───────────────────────────────────────────────────────────────
     requested_scopes: tuple[str, ...] = Field(
-        default=(
-            "datasets:write",
-            "streams:write",
-            "media-sets:write",
-            "ontology:read",
-            "ontology:write",
-        ),
+        default=DEFAULT_REQUESTED_SCOPES,
         description="OAuth scopes requested at token exchange",
     )
 
@@ -174,7 +174,8 @@ def load_maven_foundry_config(
     config_path: Path | str | None = None,
     *,
     _env_prefix: str = "",
-) -> MavenFoundryConfig:
+    strict: bool = False,
+) -> MavenFoundryConfig | None:
     """Load Maven Foundry configuration, starting from YAML then overlaying env vars.
 
     Env vars take precedence.  Recognised variables (all optional when a YAML file
@@ -194,16 +195,26 @@ def load_maven_foundry_config(
     - ``MAVEN_STATUS_ACTION``
     - ``FOUNDRY_REQUESTED_SCOPES``  (comma-separated)
 
+    When *strict* is ``False`` (the default), missing hostname or auth
+    credentials produce a partial config instead of raising -- this lets
+    local C2 operate when Foundry/Maven are not configured.  When *strict*
+    is ``True``, the historical behaviour is preserved and a ``ValueError``
+    is raised if required fields are absent.
+
     Args:
         config_path: Path to ``maven_api.yaml``.  When ``None`` the package
             default (``configs/foundry/maven_api.yaml``) is used.
+        strict: If ``True``, raise ``ValueError`` instead of returning a partial
+            config.
 
     Returns:
-        A fully-populated :class:`MavenFoundryConfig` instance.
+        A fully-populated :class:`MavenFoundryConfig` instance, or ``None`` when
+        neither hostname nor any auth material is available (regardless of *strict*).
 
     Raises:
-        FileNotFoundError: when the config file does not exist.
-        ValueError: when neither the config file nor env vars provide a required field.
+        FileNotFoundError: when the config file does not exist and *strict* is True.
+        ValueError: when neither the config file nor env vars provide a required field
+            and *strict* is True.
     """
     path = Path(config_path) if config_path else DEFAULT_MAVEN_API_YAML
     yaml_data: dict[str, Any] = {}
@@ -236,32 +247,46 @@ def load_maven_foundry_config(
     oauth_token_url = _oauth("OAUTH_TOKEN_URL", "token_url")
 
     connection_oauth: FoundryOAuthConfig | None = None
-    if oauth_client_id or oauth_client_secret or oauth_token_url:
+    has_partial_oauth = any((oauth_client_id, oauth_client_secret, oauth_token_url))
+    if has_partial_oauth:
         if oauth_client_id and oauth_client_secret and oauth_token_url:
             connection_oauth = FoundryOAuthConfig(
                 client_id=oauth_client_id,
                 client_secret=oauth_client_secret,
                 token_url=oauth_token_url,
             )
-        else:
+        elif strict:
             raise ValueError(
                 "All three OAUTH_CLIENT_ID / OAUTH_CLIENT_SECRET / "
                 "OAUTH_TOKEN_URL must be set together, or none at all."
             )
+        # non-strict: ignore partial OAuth so local C2 stays operational
+
+    # Early return: nothing useful to sync with at all.
+    if not hostname and not token and not connection_oauth:
+        if strict:
+            raise ValueError(
+                "No Foundry hostname, token, or OAuth credentials found.  "
+                "Set FOUNDRY_HOSTNAME / FOUNDRY_TOKEN in the environment or "
+                "provide a YAML config file."
+            )
+        return None
 
     connection = FoundryConnectionConfig(
-        hostname=str(hostname),
-        token=str(token),
+        hostname=str(hostname) if hostname else "",
+        token=str(token) if token else "",
         oauth=connection_oauth,
     )
 
     # Build scopes -------------------------------------------------------------
-    scopes_raw = _v("FOUNDRY_REQUESTED_SCOPES", "foundry_requested_scopes")
-    scopes: tuple[str, ...]
-    if scopes_raw:
-        scopes = _coerce_scopes(scopes_raw)
-    else:
-        scopes = _coerce_scopes(yaml_data.get("foundry_requested_scopes", ()))
+    scopes_raw = _v("FOUNDRY_REQUESTED_SCOPES", "foundry_requested_scopes", None)
+    scopes = (
+        _coerce_scopes(scopes_raw)
+        if scopes_raw not in (None, "")
+        else DEFAULT_REQUESTED_SCOPES
+    )
+    if not scopes:
+        scopes = DEFAULT_REQUESTED_SCOPES
 
     config = MavenFoundryConfig(
         connection=connection,
@@ -278,15 +303,57 @@ def load_maven_foundry_config(
     )
 
     # Validate that at least hostname / token are present --------------------
-    if not connection.hostname:
+    if strict and not connection.hostname:
         raise ValueError(
             "Foundry hostname is required.  Set FOUNDRY_HOSTNAME in the environment "
             "or 'foundry_hostname' in the YAML config."
         )
-    if not connection.token and not connection.oauth:
+    if strict and not connection.token and not connection.oauth:
         raise ValueError(
             "At least one auth mechanism is required.  Provide FOUNDRY_TOKEN "
             "(personal access token) or all three OAUTH_* variables."
         )
 
     return config
+
+
+def has_upload_credentials(config: MavenFoundryConfig | None) -> bool:
+    """Return ``True`` when a config holds enough to attempt an upload.
+
+    Requires a non-empty hostname plus either a PAT token or complete OAuth
+    credentials.
+    """
+    if config is None:
+        return False
+    conn = config.connection
+    if not conn.hostname:
+        return False
+    if conn.token:
+        return True
+    if conn.oauth is not None:
+        return bool(conn.oauth.client_id and conn.oauth.client_secret and conn.oauth.token_url)
+    return False
+
+
+def can_upload(
+    config: MavenFoundryConfig | None,
+    *,
+    sync_allowed: bool,
+) -> bool:
+    """Unified gate for any Foundry/Maven upload.
+
+    Uploads require **both** connectivity-level permission (caller passes
+    ``sync_allowed=controller.is_external_sync_allowed()``) and valid upload
+    credentials in the config.
+
+    Returns ``False`` when:
+    - *sync_allowed* is ``False`` (OFFLINE / DEGRADED mode)
+    - *config* is ``None`` (no Foundry/Maven config at all)
+    - *config* lacks hostname or auth credentials
+
+    This function never raises and never performs I/O, making it safe to call
+    from any local C2 code path.
+    """
+    if not sync_allowed:
+        return False
+    return has_upload_credentials(config)
