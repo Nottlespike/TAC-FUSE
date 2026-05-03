@@ -40,9 +40,10 @@ tasks:
     Stage: Explore and Create.
 
     Prove the route-guard C2 path first. Audit the current demo and repair any gap where
-    Patrol, Hold, Return, Replan Route, or Abort can update the UI without first writing
+    Patrol, Hold, Return, or Abort can update the UI without first writing
     local mission state, an audit-log entry, and a staged sync record. Offline and Degraded
     must block external sync; Online may release staged packets only by operator action.
+    Route path safety should remain automatic corridor monitoring, not a manual C2 command.
 
     Keep object detection supporting the C2 loop. Do not make model accuracy or hardware
     readiness the reason local command authority works.
@@ -65,14 +66,14 @@ tasks:
 
     Stage: Create.
 
-    Make route pathing consume the same fused contacts and hazard volumes that the operator
-    sees on the 3D Field C2 View. Replan Route should score corridor edges, line of sight,
+    Make automatic route-guard pathing consume the same fused contacts and hazard volumes
+    that the operator sees on the 3D Field C2 View. The corridor guard should score corridor edges, line of sight,
     RF-denial volumes, unknown contacts, standoff, battery, and latency. On Strix, use the
     RTX ray-tracing/CUDA geometry lane for BVH or spatial-query acceleration when available.
     CPU parity must return the same route-decision shape for deterministic offline tests.
 
-    The UI should describe the operator result, such as Route Replanned or Corridor Blocked,
-    instead of exposing a vague compute label.
+    The UI should describe the automatic corridor state, such as Corridor Guarded or
+    Corridor Blocked, instead of exposing a vague compute label or manual route button.
 
     Update focused tests and contrib/TAC-FUSE/CHANGELOG.md for behavior or interface changes.
   verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_ray_query.py -q && uv run python scripts/check_ray_runtime.py
@@ -146,8 +147,10 @@ tasks:
     Run the Playwright visual path and fix concrete demo defects: text outside boxes,
     unreadable contact labels, duplicate map stories, wasted panels, scroll traps, tiny
     telemetry, and controls that are hard to reach. Keep display labels capitalized.
-    The 3D Field C2 View should show decision-grade information first and move extra
-    detail into hover, selection, or evidence panels.
+    The 3D Field C2 View should be the primary working map and show decision-grade
+    information first. Keep the 2D AOI Overview on a separate tab, and move extra
+    detail into hover, selection, or secondary panels instead of overlaying bulky
+    evidence cards on the map.
 
     Update Playwright assertions and contrib/TAC-FUSE/CHANGELOG.md for interface changes.
   verify_command: cd contrib/TAC-FUSE && node --check web/app.js && npm run test:visual

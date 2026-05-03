@@ -63,10 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Field C2 view draws the wheeled vehicle as a four-wheel silhouette, counts
   vehicle frames for the local classifier story, and moves aerial contacts in
   from AOI edges instead of spawning them in the middle of the map.
-- Reworked the Local C2 route action from an ambiguous Route Solve lane toggle
-  into a Replan Route command that scores local candidate routes, stages the
-  command for sync, and draws the selected plan on both the AOI and 3D Field C2
-  views while keeping CUDA/CPU geometry as implementation status.
+- Removed the ambiguous manual route action from Local C2; corridor safety now
+  presents as automatic route-guard monitoring backed by the BVH/RTX geometry
+  lane, while operator commands stay limited to direct swarm intent.
+- Split the browser demo into Field C2 and Overview tabs so the 3D working view
+  and 2D AOI map no longer compete on the same screen; removed the bulky
+  evidence-card overlay from the live operator map.
 - Added shared friendly identity handling in the field view so Alpha, Bravo,
   Charlie, Delta, and Team 1 remain known friendly tracks across edge-node
   perspectives instead of being reclassified as unknown detector objects.

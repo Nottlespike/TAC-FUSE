@@ -527,8 +527,8 @@ class TestDeniedOpsEndToEnd:
     def test_full_route_guard_scenario(self) -> None:
         """Simulate a complete route-guard scenario from the task description.
 
-        Phase 1: OFFLINE initial tasking (4 drones + route solve)
-        Phase 2: OFFLINE retasking (situation change)
+        Phase 1: OFFLINE initial tasking (4 drones)
+        Phase 2: OFFLINE automatic corridor warning and retasking
         Phase 3: OFFLINE emergency abort
         Phase 4: DEGRADED recovery (resume patrol)
         Phase 5: ONLINE sync and export
@@ -553,18 +553,10 @@ class TestDeniedOpsEndToEnd:
             receipts.append(r)
             assert r.connectivity == "offline"
 
-        # Route solve for the corridor
-        route_receipt = authority.issue(
-            "route_solve",
-            asset_id="corridor-alpha",
-            metadata={"waypoints": ["WP1", "WP2", "WP3"]},
-        )
-        assert route_receipt.command == "route_solve"
-
         # All commands have proof chains
         report = store.verify_command_proof_chain()
         assert report["chain_complete"] is True
-        assert report["total_tasks"] == 5
+        assert report["total_tasks"] == 4
 
         # Ingest initial tracks
         for drone in drones:
@@ -578,16 +570,16 @@ class TestDeniedOpsEndToEnd:
         assert len(all_tracks) == 4
 
         # Sync blocked
-        assert store.pending_sync_count() >= 5
+        assert store.pending_sync_count() >= 4
         assert not ctrl.is_external_sync_allowed()
 
         # ── Phase 2: OFFLINE retasking ────────────────────────────────
-        # Alpha finds RF pocket → route_solve
-        authority.issue(
-            "route_solve",
-            asset_id="uav-alpha",
-            metadata={"reason": "RF pocket detected", "priority": "high"},
+        store.create_alert(
+            "AUTOMATIC CORRIDOR GUARD: RF POCKET DETECTED NEAR ROUTE",
+            severity="warning",
+            payload={"source": "bvh_route_guard", "priority": "high"},
         )
+        authority.issue("hold", asset_id="uav-alpha", metadata={"reason": "RF pocket detected"})
         # Bravo → resume patrol
         authority.issue("resume", asset_id="uav-bravo")
         # Charlie holds (already holding)

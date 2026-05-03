@@ -39,8 +39,6 @@ test("offline swarm control: commands queue, sync gate holds, degraded works", a
   // Issue commands while offline via Local C2 buttons
   await page.locator("#patrol-area").click();
   await page.waitForTimeout(200);
-  await page.locator("#replan-route").click();
-  await page.waitForTimeout(200);
   await page.locator("#hold-position").click();
   await page.waitForTimeout(200);
   await page.locator("#return-home").click();
@@ -91,25 +89,28 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator("#pov-title")).toContainText("3D Field View");
   await expect(page.locator("#frame-counter")).toContainText("Field C2 View");
   await expect(page.locator("#frame-counter")).toContainText("Command Reachback Lost");
-  await expect(page.locator("#mission-evidence")).toContainText("Route Guard Live");
-  await expect(page.locator("#mission-evidence")).toContainText("Working System");
-  await expect(page.locator("#mission-evidence")).toContainText("Route Continuity");
-  await expect(page.locator("#mission-evidence")).toContainText("Edge Authority");
-  await expect(page.locator("#mission-evidence")).toContainText("Drone NPUs");
-  await expect(page.locator("#mission-evidence")).not.toContainText(/Problem Statement 2|Technical Demo 35%|Military Impact 30%|Creativity 25%/);
+  await expect(page.locator("#mission-evidence")).toHaveCount(0);
+  await expect(page.locator(".earth-pane")).toBeHidden();
+  await expect(page.locator(".operator-pane")).toBeVisible();
+  await page.locator('[data-view="overview"]').click();
+  await expect(page.locator(".earth-pane")).toBeVisible();
+  await expect(page.locator(".operator-pane")).toBeHidden();
+  await page.locator('[data-view="field"]').click();
+  await expect(page.locator(".operator-pane")).toBeVisible();
+  await expect(page.locator(".earth-pane")).toBeHidden();
   await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
   await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
   await expect(page.locator(".metric-strip")).toContainText("Power");
   await expect(page.locator(".metric-strip")).toContainText("Sync");
-  await expect(page.locator(".metric-strip")).toContainText("Plan");
+  await expect(page.locator(".metric-strip")).toContainText("Guard");
   await expect(page.locator(".metric-strip")).not.toContainText(/object pass|objects quantified|restricted object|CPU route check/i);
-  await expect(page.locator("#replan-route")).toContainText("Replan Route");
-  await expect(page.locator("body")).not.toContainText("Route Solve");
+  await expect(page.locator("#replan-route")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/Route Solve|Replan Route/i);
   await expect(page.locator("#asset-list .feed-latency").first()).toHaveText(/^\d{1,3} ms$/);
   await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
   const labelCount = await page.locator(".target-label").count();
   expect(labelCount).toBeGreaterThan(0);
-  expect(labelCount).toBeLessThanOrEqual(3);
+  expect(labelCount).toBeLessThanOrEqual(2);
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
   await expect(page.locator(".target-label .target-chip").first()).toBeVisible();
@@ -175,12 +176,10 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(metricsBox.width).toBeGreaterThan(240);
   expect(metricsBox.height).toBeLessThan(82);
   expect(povBox.width).toBeGreaterThan(520);
-  expect(povBox.height).toBeGreaterThan(410);
+  expect(povBox.height).toBeGreaterThanOrEqual(410);
 
   const first = await canvasHash(page, "#pov-canvas");
-  await page.locator("#replan-route").click();
-  await expect(page.locator("#bvh-label")).toContainText(/Replanned|Caution Plan|Hold Pending ID/);
-  await expect(page.locator("#staged-packet")).toContainText("Replan");
+  await page.locator("#patrol-area").click();
   await page.waitForTimeout(900);
   const second = await canvasHash(page, "#pov-canvas");
 

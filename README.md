@@ -18,7 +18,12 @@ uv run python scripts/cache_visual_assets.py --dry-run
 uv run python scripts/check_ray_runtime.py
 ```
 
-Open `web/index.html` directly in a browser for the emulator. The left pane is the live swarm world; the right pane is the selected drone's POV. Operator commands change drone behavior. Offline mode queues commands and export records while the local graphics, collision BVH route solver, and sensor-cue paths keep running.
+Open `web/index.html` directly in a browser for the emulator. The default tab is
+the 3D Field C2 view with selected edge-node controls; the Overview tab keeps
+the 2D AOI map available without crowding the working view. Operator commands
+change drone behavior. Offline mode queues commands and export records while
+local graphics, automatic corridor-guard geometry, and sensor-cue paths keep
+running.
 
 To populate the first real Earth-raster layer for the browser view:
 
@@ -66,4 +71,4 @@ Core execution writes SQLite state first. Foundry integration is represented as 
 
 ## Local Hardware Boundary
 
-The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The BVH path is the route-guard geometry solver: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries; without RTX/CUDA availability the CPU parity path stays available for offline validation.
+The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The BVH path is the automatic corridor guard: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries; without RTX/CUDA availability the CPU parity path stays available for offline validation.

@@ -1,5 +1,5 @@
 const WORLD_M = 1200;
-const MAX_VISIBLE_DETECTION_LABELS = 3;
+const MAX_VISIBLE_DETECTION_LABELS = 2;
 const AOI_TILE = {
   label: "1.2 km local AOI",
   cropX: 0.31,
@@ -49,12 +49,6 @@ const ROUTE_GUARD_SCENARIO = {
   summary: "Internet Lost · Command Reachback Lost · Local Authority Holds",
   cvLane: "Device NPU Cues · Alpha/Bravo/Charlie/Delta",
 };
-const MISSION_SIGNALS = [
-  { label: "Working System", kind: "system" },
-  { label: "Route Continuity", kind: "route" },
-  { label: "Edge Authority", kind: "authority" },
-];
-
 // Contributor feeds to the fusion node - each has freshness/confidence/latency
 const feeds = [
   {
@@ -278,6 +272,7 @@ const sceneClassTargets = [
 ];
 
 let selectedId = "uav-alpha";
+let activeView = "field";
 let connectivityMode = "offline";
 let rayPath = "cuda";
 let simPaused = false;
@@ -2417,45 +2412,6 @@ function renderDeniedProof() {
   `;
 }
 
-function renderMissionEvidence(feed, hits, scores) {
-  const el = document.querySelector("#mission-evidence");
-  if (!el) return;
-
-  const allContacts = detectableObjects();
-  const unknownCount = sceneClassTargets.filter((item) => item.type.startsWith("unknown")).length;
-  const npuCount = feeds.filter((item) => item.npu).length;
-  const trackCount = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
-  const avgLatency = Math.round(allFeeds().reduce((sum, item) => sum + item.latency, 0) / allFeeds().length);
-  const routeConflict = hits.some((hit) => hit.severity === "critical" && hit.distance < hit.radius);
-  const routeState = routeConflict ? "Corridor Blocked" : "Corridor Guarded";
-  const strongestCue = scores.length > 0 ? `${scores[0][0]} ${Math.round(scores[0][1] * 100)}%` : "No Cue";
-  const signals = MISSION_SIGNALS.map((signal) => {
-    let detail;
-    if (signal.kind === "system") {
-      detail = `${npuCount} Drone NPUs · ${trackCount || allContacts.length} Fused Tracks · ${formatLatencyMs(avgLatency)} Avg Feed`;
-    } else if (signal.kind === "route") {
-      detail = `${formatMeters(routeLengthMeters())} Route · ${unknownCount} Unknowns · ${routeState}`;
-    } else {
-      detail = `Backpack Edge C2 · ${Math.round(laptopBattery)}% Power · ${swarmTasking.history.length} Local Cmds`;
-    }
-    return `<div class="evidence-card">
-      <span>${signal.label}</span>
-      <strong>${detail}</strong>
-    </div>`;
-  }).join("");
-
-  el.innerHTML = `
-    <div class="evidence-card evidence-scenario">
-      <span>${ROUTE_GUARD_SCENARIO.title}</span>
-      <strong>${ROUTE_GUARD_SCENARIO.mission}</strong>
-      <em>${ROUTE_GUARD_SCENARIO.summary}</em>
-      <small>${feed.callsign}: ${displayCommand(feed.command)} · Auto Guard: ${routeState} · Cue: ${strongestCue}</small>
-      <small>${ROUTE_GUARD_SCENARIO.cvLane}</small>
-    </div>
-    ${signals}
-  `;
-}
-
 function renderSwarmC2Status() {
   // Update the topbar feed summary with swarm C2 metrics
   const feedCountEl = document.querySelector("#feed-count");
@@ -2510,7 +2466,6 @@ function renderFrame() {
   renderAlerts(feed, hits, scores);
   renderSwarmC2();
   renderDeniedProof();
-  renderMissionEvidence(feed, hits, scores);
   renderMissionLog();
   updateModeChrome();
   currentPosture = computePosture();
@@ -2592,6 +2547,18 @@ function cycleSelected(offset) {
   renderFrame();
 }
 
+function setActiveView(view) {
+  activeView = view;
+  document.querySelectorAll(".view-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.view === view);
+  });
+  document.querySelectorAll("[data-view-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.viewPanel === view);
+  });
+  pushLog(`View Switched To ${view === "overview" ? "Overview" : "Field C2"}.`);
+  renderFrame();
+}
+
 function triggerSync() {
   // Hard boundary: even if button is somehow clicked, enforce the gate
   if (connectivityMode !== "online") {
@@ -2622,6 +2589,9 @@ document.querySelector("#emergency-stop").addEventListener("click", () => issueC
 document.querySelector("#sync-now").addEventListener("click", () => triggerSync());
 document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
 document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
+document.querySelectorAll(".view-tab").forEach((button) => {
+  button.addEventListener("click", () => setActiveView(button.dataset.view));
+});
 
 function setConnectivityMode(mode) {
   connectivityMode = mode;

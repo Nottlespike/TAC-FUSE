@@ -31,7 +31,12 @@
     </header>
 
     <main class="workspace">
-        <section class="earth-pane">
+        <nav class="view-tabs" aria-label="Operator view">
+            <button class="view-tab active" data-view="field">Field C2</button>
+            <button class="view-tab" data-view="overview">Overview</button>
+        </nav>
+
+        <section class="earth-pane view-pane" data-view-panel="overview">
             <div class="section-heading">
                 <div>
                     <h1>Fused Theater</h1>
@@ -61,7 +66,7 @@
             </div>
         </section>
 
-        <section class="operator-pane">
+        <section class="operator-pane view-pane active" data-view-panel="field">
             <div class="section-heading">
                 <div>
                     <h1 id="pov-title">Route Guard 3D Field View</h1>
@@ -76,7 +81,6 @@
 
             <div class="pov-shell">
                 <canvas id="pov-canvas" width="960" height="540"></canvas>
-                <div id="mission-evidence" class="mission-evidence" aria-label="Mission Evidence"></div>
                 <div id="pov-overlay" class="pov-overlay"></div>
             </div>
 
@@ -97,7 +101,7 @@
                         <strong id="range-label">650 m</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Plan</span>
+                        <span class="metric-label">Guard</span>
                         <strong id="bvh-label">Monitoring</strong>
                     </div>
                     <div>

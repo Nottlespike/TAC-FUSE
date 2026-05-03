@@ -51,3 +51,6 @@ def test_alpha_test_plan_names_handoff_artifact() -> None:
     assert "RTX ray-tracing cores" in plan_text
     assert "zero-shot labeler" in plan_text
     assert "trained classifiers" in plan_text
+    assert "Automatic corridor guard" in plan_text
+    assert "separate tab" in plan_text
+    assert "Replan Route" not in plan_text

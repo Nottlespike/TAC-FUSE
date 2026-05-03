@@ -325,9 +325,43 @@ body {
 
 .workspace {
     display: grid;
-    grid-template-columns: minmax(520px, 43vw) minmax(640px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(720px, 1fr);
     height: calc(100vh - 54px);
     min-height: 0;
+}
+
+.view-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px 0;
+    background: #0c1113;
+}
+
+.view-tab {
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #172226;
+    color: var(--muted);
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.view-tab.active {
+    background: #14251f;
+    border-color: #2a6e57;
+    color: var(--accent);
+}
+
+.view-pane {
+    display: none;
+}
+
+.view-pane.active {
+    display: grid;
 }
 
 .earth-pane,
@@ -339,9 +373,7 @@ body {
 }
 
 .earth-pane {
-    display: grid;
     grid-template-rows: auto minmax(360px, 1fr) minmax(190px, 0.38fr);
-    border-right: 1px solid var(--line);
     background: #11191c;
     gap: 12px;
 }
@@ -352,6 +384,14 @@ body {
     background: #0c1113;
     gap: 12px;
     overflow: hidden;
+}
+
+.workspace > .view-pane:not(.active) {
+    display: none;
+}
+
+.workspace > .view-pane.active {
+    display: grid;
 }
 
 .section-heading {
@@ -463,63 +503,6 @@ canvas {
     pointer-events: none;
     position: absolute;
     inset: 0;
-}
-
-.mission-evidence {
-    pointer-events: none;
-    position: absolute;
-    z-index: 4;
-    left: 12px;
-    right: 12px;
-    top: 12px;
-    display: grid;
-    grid-template-columns: minmax(220px, 1.15fr) repeat(3, minmax(128px, 0.72fr));
-    gap: 8px;
-}
-
-.evidence-card {
-    border: 1px solid rgba(85, 214, 166, 0.36);
-    border-radius: 6px;
-    background: rgba(7, 11, 13, 0.78);
-    padding: 8px 10px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-    backdrop-filter: blur(8px);
-    min-width: 0;
-}
-
-.evidence-card span,
-.evidence-card small {
-    display: block;
-    color: var(--muted);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-}
-
-.evidence-card strong {
-    display: block;
-    margin-top: 3px;
-    color: var(--text);
-    font-size: 12px;
-    line-height: 1.25;
-}
-
-.evidence-card em {
-    display: block;
-    margin-top: 3px;
-    color: var(--accent);
-    font-size: 11px;
-    font-style: normal;
-    line-height: 1.25;
-}
-
-.evidence-card small {
-    margin-top: 5px;
-    color: var(--blue);
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 600;
 }
 
 .target-label {

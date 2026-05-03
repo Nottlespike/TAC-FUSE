@@ -12,12 +12,14 @@ making the accelerator lanes real instead of decorative.
 Pass criteria:
 
 - The first screen starts in the Route Guard scenario with no cloud dependency.
-- Patrol, Hold, Return, Replan Route, and Abort write local mission state,
+- Patrol, Hold, Return, and Abort write local mission state,
   audit log entries, and staged sync records before any upload path can run.
 - Offline and Degraded modes block external sync; Online only releases staged
   packets by operator action.
 - Alpha, Bravo, Charlie, Delta, and Team 1 remain known tracks with object
   permanence across cue updates.
+- Corridor path safety is automatic; operators should not have to manually
+  trigger geometry work to keep the route guarded.
 
 Validation:
 
@@ -31,8 +33,10 @@ Pass criteria:
 
 - All visible UI copy uses capitalized display labels.
 - No label, chip, telemetry line, or contact annotation escapes its container.
-- The 3D Field C2 View shows only the information needed for the current
-  operator decision; detail moves to hover, selection, or evidence panels.
+- The 3D Field C2 View is the primary working map; keep the 2D AOI Overview on a
+  separate tab instead of showing both maps on the same screen.
+- The field view shows only the information needed for the current operator
+  decision; detail moves to hover, selection, or secondary panels.
 - Aerial contacts enter from the AOI edge and ground contacts move along
   plausible field paths.
 
@@ -47,13 +51,13 @@ npm run test:visual
 
 Pass criteria:
 
-- Replan Route consumes the same fused contacts that the cue labeler sees.
+- Automatic corridor guard consumes the same fused contacts that the cue labeler sees.
 - The pathing lane scores corridor edges, line of sight, RF-denial volumes,
   unknown contacts, standoff, battery, and latency.
 - On Strix, RTX ray-tracing cores or CUDA geometry back the BVH/spatial-query
   path when available.
 - CPU parity returns the same decision shape for deterministic offline tests.
-- The UI names the operator action and route result, not a vague compute stage.
+- The UI names the corridor state, not a vague compute stage or manual route action.
 
 Validation:
 
