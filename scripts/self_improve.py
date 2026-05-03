@@ -105,12 +105,34 @@ INFERENCE_TERMS = (
     "model accuracy",
     "benchmark",
 )
+CENTRALITY_RISK_TERMS = (
+    "availability",
+    "benchmark",
+    "center",
+    "centers",
+    "centered",
+    "core",
+    "focus",
+    "gate",
+    "main",
+    "model accuracy",
+    "must",
+    "optimize",
+    "primary",
+    "require",
+    "required",
+    "requires",
+)
 SUPPORTING_CONTEXT_TERMS = (
+    "do not",
     "supporting",
     "optional",
     "not the main",
     "not the core",
     "not the application",
+    "not run a model",
+    "must not require",
+    "not require",
     "after the c2",
     "proof point",
     "graceful",
@@ -240,7 +262,11 @@ def _inference_centrality_findings(root: Path, path: Path, text: str) -> list[Fi
         lowered = line.lower()
         if not any(term in lowered for term in INFERENCE_TERMS):
             continue
+        if "npu-label" in lowered:
+            continue
         context = _line_context(lines, index)
+        if not _has_any(context, CENTRALITY_RISK_TERMS):
+            continue
         if _has_any(context, SUPPORTING_CONTEXT_TERMS):
             continue
         if _has_any(context, ANCHOR_TERMS["local_c2_authority"]) and _has_any(

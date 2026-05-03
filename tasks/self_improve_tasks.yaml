@@ -1,0 +1,144 @@
+metadata:
+  generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+  generated_at: '2026-05-03T04:02:17.752344+00:00'
+  problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+  scope: contrib/TAC-FUSE/
+  priority_order:
+  - Local C2 authority
+  - Disconnected resilience
+  - Drone coordination
+  - Sensor fusion and alerting
+  - Power/latency posture
+  - Enterprise sync boundary
+  alignment_findings: 0
+tasks:
+- name: tac-fuse-p0-local-c2-state-first
+  priority: P0
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Make local C2 state writes the first-class\
+    \ proof path\n\nAudit the operator-command path and make sure every tasking or retasking action persists\
+    \ to local mission state, audit log, and outbound sync queue before any enterprise export/upload path\
+    \ can run. Keep the implementation offline and deterministic.\n\nGuardrails:\n- Do not make Intel\
+    \ NPU availability, model accuracy, or object detection the center of the work.\n- Core behavior must\
+    \ remain offline-testable and must not require Foundry, Maven, OpenVINO,\n  internet, Hugging Face\
+    \ downloads, RTX hardware, or an Intel NPU.\n- If you touch behavior, add or update focused offline\
+    \ tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,\n\
+    \  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_mission_state.py tests/test_connectivity.py
+    -q
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: local_c2_authority
+- name: tac-fuse-p0-denied-link-swarm-control
+  priority: P0
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Prove a single operator can control\
+    \ the swarm while denied\n\nStrengthen the web demo, runbook, or local replay fixtures so a single\
+    \ operator can task and retask multiple drones while OFFLINE/DEGRADED. The proof should show local\
+    \ state, map/replay context, alerts, and queued enterprise sync continuing without Foundry, Maven,\
+    \ internet, or central C2.\n\nGuardrails:\n- Do not make Intel NPU availability, model accuracy, or\
+    \ object detection the center of the work.\n- Core behavior must remain offline-testable and must\
+    \ not require Foundry, Maven, OpenVINO,\n  internet, Hugging Face downloads, RTX hardware, or an Intel\
+    \ NPU.\n- If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_mission_state.py tests/test_connectivity.py
+    -q
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: drone_coordination
+- name: tac-fuse-p1-local-alert-prioritization
+  priority: P1
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Turn local sensor and geometry events\
+    \ into prioritized alerts\n\nImprove the local sensor/fusion path so video, RF, position, stale-feed,\
+    \ restricted-zone, route-conflict, or battery observations become prioritized operator alerts without\
+    \ cloud infrastructure. Object detection may be used only as an optional source of cue data after\
+    \ the alert path works.\n\nGuardrails:\n- Do not make Intel NPU availability, model accuracy, or object\
+    \ detection the center of the work.\n- Core behavior must remain offline-testable and must not require\
+    \ Foundry, Maven, OpenVINO,\n  internet, Hugging Face downloads, RTX hardware, or an Intel NPU.\n\
+    - If you touch behavior, add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md\
+    \ for behavior, interface, demo workflow, dependency,\n  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_local_sensor_ingest_bus.py tests/test_sensor_models.py
+    tests/test_mission_state.py -q
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: sensor_fusion_alerting
+- name: tac-fuse-p1-enterprise-sync-boundary
+  priority: P1
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Keep Maven and Foundry behind a deferred\
+    \ sync boundary\n\nVerify and tighten the export/upload boundary: exports can be created from local\
+    \ state while disconnected, but uploads must be gated by ONLINE mode and credential presence. Missing\
+    \ Foundry or Maven configuration must never block local operator C2.\n\nGuardrails:\n- Do not make\
+    \ Intel NPU availability, model accuracy, or object detection the center of the work.\n- Core behavior\
+    \ must remain offline-testable and must not require Foundry, Maven, OpenVINO,\n  internet, Hugging\
+    \ Face downloads, RTX hardware, or an Intel NPU.\n- If you touch behavior, add or update focused offline\
+    \ tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,\n\
+    \  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run pytest tests/test_connectivity.py tests/test_maven_foundry_config.py
+    -q
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: enterprise_sync_boundary
+- name: tac-fuse-p2-power-latency-posture
+  priority: P2
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Make laptop/backpack power and latency\
+    \ constraints visible\n\nAdd a lightweight operator-facing or runbook-visible power/latency posture:\
+    \ bounded local workloads, CPU fallback, battery/backpack assumptions, and what work is safe to run\
+    \ during denied connectivity. Avoid model benchmark charts as the center of the demo.\n\nGuardrails:\n\
+    - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.\n\
+    - Core behavior must remain offline-testable and must not require Foundry, Maven, OpenVINO,\n  internet,\
+    \ Hugging Face downloads, RTX hardware, or an Intel NPU.\n- If you touch behavior, add or update focused\
+    \ offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,\n\
+    \  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run python scripts/self_improve.py audit --skip-ruff --fail-on-findings
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: power_latency_posture
+- name: tac-fuse-p2-accelerator-supporting-role
+  priority: P2
+  scope: contrib/TAC-FUSE/
+  validation_lane: software
+  prompt: "IMPORTANT - TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation.\n\n\
+    Working directory: AlphaHENG repo root.\nScope: contrib/TAC-FUSE/\n\nPriority order:\n1. Local C2\
+    \ authority\n2. Disconnected resilience\n3. Drone coordination\n4. Sensor fusion and alerting\n5.\
+    \ Power/latency posture\n6. Enterprise sync boundary\n\nTask: Keep NPU, MPU, GPU, and RTX paths in\
+    \ a supporting role\n\nAudit docs, UI copy, and scripts so accelerator and object-detection paths\
+    \ are clearly optional supporting capabilities. The accepted thesis is: local C2 continues on the\
+    \ hardened laptop even when inference hardware, model downloads, or cloud services are unavailable.\n\
+    \nGuardrails:\n- Do not make Intel NPU availability, model accuracy, or object detection the center\
+    \ of the work.\n- Core behavior must remain offline-testable and must not require Foundry, Maven,\
+    \ OpenVINO,\n  internet, Hugging Face downloads, RTX hardware, or an Intel NPU.\n- If you touch behavior,\
+    \ add or update focused offline tests.\n- Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface,\
+    \ demo workflow, dependency,\n  or validation changes.\n"
+  verify_command: cd contrib/TAC-FUSE && uv run python scripts/self_improve.py audit --skip-ruff --fail-on-findings
+  metadata:
+    generated_by: contrib/TAC-FUSE/scripts/self_improve.py
+    problem_statement: 'Problem Statement 2: Edge Deployments and Drone Operation'
+    alignment_focus: local_c2_authority
