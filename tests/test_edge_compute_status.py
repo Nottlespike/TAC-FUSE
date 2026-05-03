@@ -73,6 +73,16 @@ def test_writer_emits_accelerated_edge_status(monkeypatch, tmp_path: Path) -> No
             )
 
     monkeypatch.setattr(edge_status, "IntelNPUSigLIP2Adapter", ReadyAdapter)
+    monkeypatch.setattr(
+        edge_status,
+        "inspect_packaged_siglip2_package",
+        lambda: {
+            "model_dir": "models/siglip2-expanded-vehicle-hpo-best",
+            "package_id": "siglip2-expanded-vehicle-hpo-best",
+            "ready_for_demo": True,
+            "reason": "ready",
+        },
+    )
 
     assert (
         edge_status.main(
@@ -85,6 +95,7 @@ def test_writer_emits_accelerated_edge_status(monkeypatch, tmp_path: Path) -> No
     assert payload["ray"]["accelerated"] is True
     assert payload["npu"]["ready"] is True
     assert payload["ui"]["backend_label"] == "Accelerated Geometry"
+    assert payload["ui"]["classifier_label"] == "H100 Classifier Packaged"
     assert payload["ui"]["npu_label"] == "Edge NPU Ready"
     assert payload["ui"]["summary_label"] == "Accelerated Geometry + Edge NPU"
     assert payload["ui"]["compute_mode"] == "accelerated_geometry_npu"
@@ -128,6 +139,16 @@ def test_writer_marks_validation_rt_control_without_hardware(
             )
 
     monkeypatch.setattr(edge_status, "IntelNPUSigLIP2Adapter", UnverifiedAdapter)
+    monkeypatch.setattr(
+        edge_status,
+        "inspect_packaged_siglip2_package",
+        lambda: {
+            "model_dir": "models/siglip2-expanded-vehicle-hpo-best",
+            "package_id": "siglip2-expanded-vehicle-hpo-best",
+            "ready_for_demo": False,
+            "reason": "missing packaged classifier files",
+        },
+    )
 
     assert edge_status.main(["--output", str(output), "--device", "NPU"]) == 0
 
@@ -137,6 +158,7 @@ def test_writer_marks_validation_rt_control_without_hardware(
     assert payload["ray"]["backend"] == "validation"
     assert payload["npu"]["ready"] is False
     assert payload["ui"]["backend_label"] == "Validation Geometry"
+    assert payload["ui"]["classifier_label"] == "H100 Classifier Unverified"
     assert payload["ui"]["npu_label"] == "Edge NPU Unverified"
     assert payload["ui"]["summary_label"] == "Validation RT Control"
     assert payload["ui"]["compute_mode"] == "validation_rt_control"
@@ -146,5 +168,6 @@ def test_checked_in_browser_status_is_parseable() -> None:
     payload = _payload_from_js(ROOT / "web" / "edge_compute_status.js")
 
     assert payload["pipeline"]["generated_by"] == "scripts/write_edge_compute_status.py"
+    assert "classifier_label" in payload["ui"]
     assert payload["ui"]["route_guard_use_case"]
     assert "Pending" not in payload["ui"]["summary_label"]

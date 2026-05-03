@@ -72,10 +72,25 @@ Verify the tracked metadata path without needing the large model files:
 uv run pytest tests/test_siglip2_model_package.py -q
 ```
 
+Install and validate the optional PyTorch runtime in the project `.venv`:
+
+```bash
+uv sync --extra dev --extra classifier-runtime
+uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
+```
+
+For a visible cue smoke test, pass a local frame:
+
+```bash
+uv run python scripts/check_classifier_package.py --require-package --require-runtime --image /path/to/frame.jpg
+```
+
 ## Runtime Boundary
 
-This package is a PyTorch SigLIP2 backbone plus a trained classifier head. It is
-not yet the OpenVINO INT8 IR consumed by `IntelNPUSigLIP2Adapter`, which expects:
+This package is now importable through `tac_fuse.vision.classifier` as
+`PackagedSigLIP2Classifier`. It is a PyTorch SigLIP2 backbone plus a trained
+classifier head. It is not yet the OpenVINO INT8 IR consumed by
+`IntelNPUSigLIP2Adapter`, which expects:
 
 ```text
 models/siglip2-field-npu/

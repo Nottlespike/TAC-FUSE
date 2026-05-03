@@ -96,6 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - H100-selected SigLIP2 expanded-vehicle classifier package manifest, local
   package documentation, checksum workflow, and reproducible H100 training
   entrypoint.
+- Optional `classifier-runtime` dependency extra, packaged SigLIP2 classifier
+  loader, readiness script, and browser status surface for the H100-selected
+  classifier package.
 
 ### Changed
 - The browser field view now applies RT geometry decisions to drone standoff,

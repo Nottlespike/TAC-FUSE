@@ -13,9 +13,10 @@ The answer is not "run a model." The answer is that the hardened laptop or backp
 Run these before judges arrive:
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra classifier-runtime
 uv run pytest -q
 uv run ruff check src tests
+uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
 uv run python scripts/check_npu_runtime.py --device NPU
 ```
 

@@ -47,6 +47,14 @@ The current H100-selected PyTorch classifier package is staged locally under
 `docs/siglip2_expanded_vehicle_classifier.md` for metrics, checksums, and the
 OpenVINO export boundary.
 
+For a demo machine that should load the packaged PyTorch checkpoint directly:
+
+```bash
+uv sync --extra dev --extra classifier-runtime
+uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
+uv run python scripts/write_edge_compute_status.py --output web/edge_compute_status.js --device NPU --model-dir models/siglip2-field-npu
+```
+
 Expected local model layout:
 
 ```text

@@ -479,6 +479,10 @@ function edgeNpuLabel() {
   return edgeCompute?.ui?.npu_label || "Edge NPU Unverified";
 }
 
+function edgeClassifierLabel() {
+  return edgeCompute?.ui?.classifier_label || "H100 Classifier Unverified";
+}
+
 function edgeComputeFreshnessLabel() {
   const generatedAt = edgeCompute?.generated_at;
   if (!generatedAt) return "Fallback";
@@ -2579,6 +2583,7 @@ function renderHardware(feed, hits) {
     ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
     ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
+    ["H100 Classifier", `${edgeClassifierLabel()} · ${edgeCompute?.classifier_package?.package_id || "No Package"}`, edgeCompute?.classifier_package?.ready_for_demo ? "Good" : "Watch"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${edgeNpuLabel()}`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],

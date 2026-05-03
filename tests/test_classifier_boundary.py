@@ -1,5 +1,6 @@
 """Tests for the unified classifier boundary in tac_fuse.vision.classifier."""
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -11,9 +12,35 @@ from tac_fuse.vision.classifier import (
     ClassifierOutput,
     ModelAssetError,
     NaiveZeroShotClassifier,
+    PackagedSigLIP2Classifier,
     SegmentationMask,
     create_classifier,
 )
+
+
+def _write_package_manifest(tmp_path: Path) -> tuple[Path, Path]:
+    model_dir = tmp_path / "model"
+    manifest = {
+        "package_id": "test-siglip2-package",
+        "artifact_type": "pytorch_siglip2_image_classifier",
+        "package_dir": str(model_dir),
+        "base_model": "google/siglip2-base-patch16-224",
+        "dataset": {"label_mapping": {"clear_corridor": 0, "low_power_return_corridor": 1}},
+        "metrics": {"eval_accuracy": 0.7, "eval_loss": 0.6, "score": 0.64},
+        "selection": {"framework": "Ax + BoTorch", "trial_index": 14},
+        "files": [
+            {"path": "backbone/config.json", "bytes": 2, "sha256": "0" * 64},
+            {"path": "processor/processor_config.json", "bytes": 2, "sha256": "1" * 64},
+            {"path": "classifier_head.pt", "bytes": 2, "sha256": "2" * 64},
+        ],
+    }
+    for item in manifest["files"]:
+        path = model_dir / item["path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+    manifest_path = tmp_path / "package.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest_path, model_dir
 
 
 class TestBoundingBox:
@@ -403,6 +430,77 @@ class TestNaiveZeroShotClassifier:
             Path(frame_path).unlink()
 
 
+class TestPackagedSigLIP2Classifier:
+    """Tests for the H100-selected packaged classifier boundary."""
+
+    def test_packaged_classifier_reports_missing_files(self, tmp_path: Path) -> None:
+        manifest_path, model_dir = _write_package_manifest(tmp_path)
+        (model_dir / "classifier_head.pt").unlink()
+
+        clf = PackagedSigLIP2Classifier(
+            model_path=model_dir,
+            manifest_path=manifest_path,
+        )
+        status = clf.inspect_status()
+
+        assert status["ready"] is False
+        assert status["model_present"] is False
+        assert "classifier_head.pt" in status["missing_paths"][0]
+
+    def test_packaged_classifier_ready_with_runtime_dependencies(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        manifest_path, model_dir = _write_package_manifest(tmp_path)
+        monkeypatch.setattr(
+            PackagedSigLIP2Classifier,
+            "_dependency_status",
+            lambda self: {
+                "PIL": True,
+                "sentencepiece": True,
+                "torch": True,
+                "transformers": True,
+            },
+        )
+
+        clf = PackagedSigLIP2Classifier(
+            model_path=model_dir,
+            manifest_path=manifest_path,
+        )
+        status = clf.inspect_status()
+
+        assert status["ready"] is True
+        assert status["package_id"] == "test-siglip2-package"
+        assert status["metrics"]["eval_accuracy"] == 0.7
+
+    def test_create_classifier_can_return_packaged_classifier(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        manifest_path, model_dir = _write_package_manifest(tmp_path)
+        monkeypatch.setattr(
+            PackagedSigLIP2Classifier,
+            "_dependency_status",
+            lambda self: {
+                "PIL": True,
+                "sentencepiece": True,
+                "torch": True,
+                "transformers": True,
+            },
+        )
+
+        clf = create_classifier(
+            use_trained=True,
+            model_path=model_dir,
+            manifest_path=manifest_path,
+            fallback_to_naive=False,
+        )
+
+        assert isinstance(clf, PackagedSigLIP2Classifier)
+
+
 class TestCreateClassifier:
     """Tests for create_classifier factory function."""
 
@@ -417,11 +515,15 @@ class TestCreateClassifier:
 
     def test_create_with_fallback_no_model_path(self) -> None:
         clf = create_classifier(use_trained=True, fallback_to_naive=True)
-        assert isinstance(clf, NaiveZeroShotClassifier)
+        assert isinstance(clf, (NaiveZeroShotClassifier, PackagedSigLIP2Classifier))
 
     def test_create_without_fallback_no_model_path(self) -> None:
-        with pytest.raises(ModelAssetError, match="model_path required"):
-            create_classifier(use_trained=True, fallback_to_naive=False)
+        try:
+            clf = create_classifier(use_trained=True, fallback_to_naive=False)
+        except ModelAssetError as exc:
+            assert "Default packaged classifier is not ready" in str(exc)
+        else:
+            assert isinstance(clf, PackagedSigLIP2Classifier)
 
     def test_create_with_nonexistent_model_path_fallback(self) -> None:
         clf = create_classifier(

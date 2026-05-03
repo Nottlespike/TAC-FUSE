@@ -58,7 +58,7 @@ The primary capability is not object detection. The primary capability is resili
 |-------|-------------|----------------------|
 | Python | 3.12 or 3.14 | `uv run python --version` |
 | Package manager | `uv` visible to non-interactive shells | `export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; command -v uv` |
-| Install | `uv sync --extra dev` | `uv sync --extra dev && echo "OK"` |
+| Install | `uv sync --extra dev --extra classifier-runtime` | `uv sync --extra dev --extra classifier-runtime && echo "OK"` |
 | Tests pass | Full offline test suite | `uv run pytest -q` |
 | Lint clean | `ruff check src tests` | `uv run ruff check src tests` |
 
@@ -129,7 +129,7 @@ the talk track.
 ```bash
 # 1. Install / sync
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-uv sync --extra dev
+uv sync --extra dev --extra classifier-runtime
 
 # 2. Run full offline test suite
 uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
@@ -138,6 +138,7 @@ uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
 uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
 
 # 4. Strix hard-readiness lane
+uv run python scripts/check_classifier_package.py --require-package --require-runtime --load-model
 bash scripts/check_strix_bringup.sh
 ```
 
@@ -453,7 +454,7 @@ Each proof point is a discrete claim that can be verified live during the demo.
 
 ```bash
 # Full demo in one shell session
-uv sync --extra dev
+uv sync --extra dev --extra classifier-runtime
 uv run pytest -q
 uv run ruff check src tests
 # Hardware lane: check RTX if using accelerated geometry

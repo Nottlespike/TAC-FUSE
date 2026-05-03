@@ -8,6 +8,7 @@ __all__ = [
     "ModelAssetError",
     "NaiveZeroShotClassifier",
     "OpenVINOZeroShotClassifier",
+    "PackagedSigLIP2Classifier",
     "SegmentationMask",
     "ZeroShotCandidate",
     "ZeroShotClassification",
@@ -26,6 +27,7 @@ def __getattr__(name: str) -> object:
         "ClassifierOutput",
         "ModelAssetError",
         "NaiveZeroShotClassifier",
+        "PackagedSigLIP2Classifier",
         "SegmentationMask",
         "create_classifier",
     }:

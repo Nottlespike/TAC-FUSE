@@ -21,9 +21,13 @@ cd "$PROJECT_ROOT"
 echo "=== TAC-FUSE Strix Bring-Up ==="
 echo "[OK]   uv: $(command -v uv)"
 
-uv sync --extra dev
+uv sync --extra dev --extra classifier-runtime
 
 bash docs/check_rtx_prereqs.sh
+uv run python scripts/check_classifier_package.py \
+    --require-package \
+    --require-runtime \
+    --load-model
 uv run python scripts/check_ray_runtime.py --require-rtx
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py \
     --device NPU \

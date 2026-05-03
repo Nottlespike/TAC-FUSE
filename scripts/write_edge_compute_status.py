@@ -18,6 +18,7 @@ from typing import Any
 
 from tac_fuse.npu_siglip import IntelNPUSigLIP2Adapter
 from tac_fuse.ray_query import inspect_ray_runtime
+from tac_fuse.training.model_package import inspect_packaged_siglip2_package
 
 DEFAULT_OUTPUT = Path("web/edge_compute_status.js")
 DEFAULT_MODEL_DIR = Path("models/siglip2-field-npu")
@@ -42,9 +43,18 @@ def _compute_mode(ray: dict[str, Any], npu: dict[str, Any]) -> str:
     return "validation_rt_control"
 
 
-def _labels(ray: dict[str, Any], npu: dict[str, Any]) -> dict[str, str]:
+def _labels(
+    ray: dict[str, Any],
+    npu: dict[str, Any],
+    classifier_package: dict[str, Any],
+) -> dict[str, str]:
     ray_label = "Accelerated Geometry" if ray.get("accelerated") else "Validation Geometry"
     npu_label = "Edge NPU Ready" if npu.get("ready") else "Edge NPU Unverified"
+    classifier_label = (
+        "H100 Classifier Packaged"
+        if classifier_package.get("ready_for_demo")
+        else "H100 Classifier Unverified"
+    )
     if ray.get("accelerated") and npu.get("ready"):
         summary = "Accelerated Geometry + Edge NPU"
     elif ray.get("accelerated"):
@@ -55,6 +65,7 @@ def _labels(ray: dict[str, Any], npu: dict[str, Any]) -> dict[str, str]:
         summary = "Validation RT Control"
     return {
         "backend_label": ray_label,
+        "classifier_label": classifier_label,
         "npu_label": npu_label,
         "summary_label": summary,
     }
@@ -73,7 +84,8 @@ def collect_status(
     if not ray.get("accelerated"):
         ray = {**ray, "backend": "validation"}
     npu = _to_dict(IntelNPUSigLIP2Adapter(model_dir=model_dir, device=device).inspect_runtime())
-    labels = _labels(ray, npu)
+    classifier_package = inspect_packaged_siglip2_package()
+    labels = _labels(ray, npu, classifier_package)
     compute_mode = _compute_mode(ray, npu)
     now = datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     host = source_label or socket.gethostname() or "local"
@@ -84,6 +96,7 @@ def collect_status(
         "source": host,
         "ray": ray,
         "npu": npu,
+        "classifier_package": classifier_package,
         "ui": {
             **labels,
             "compute_mode": compute_mode,
@@ -92,6 +105,7 @@ def collect_status(
         },
         "pipeline": {
             "generated_by": "scripts/write_edge_compute_status.py",
+            "classifier_package": classifier_package["model_dir"],
             "model_dir": str(model_dir or DEFAULT_MODEL_DIR),
             "device": device or "auto",
         },

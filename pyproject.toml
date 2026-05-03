@@ -29,6 +29,12 @@ npu = [
   "sentencepiece>=0.2",
   "transformers>=4.53",
 ]
+classifier-runtime = [
+    "pillow>=10.4",
+    "sentencepiece>=0.2",
+    "torch>=2.6",
+    "transformers>=4.53",
+]
 
 [project.scripts]
 tac-fuse-npu-trainer = "tac_fuse.npu_trainer:main"

@@ -15,6 +15,7 @@ ready() method for checking model availability before inference.
 
 from __future__ import annotations
 
+import importlib.util
 import time
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
@@ -23,6 +24,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from tac_fuse.fusion_node.ingest import ContributorSource, SensorEvent
+from tac_fuse.training.model_package import (
+    inspect_packaged_siglip2_package,
+    load_siglip2_classifier_package,
+    packaged_siglip2_model_dir,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -349,10 +355,214 @@ class NaiveZeroShotClassifier(BaseClassifier):
         )
 
 
+class PackagedSigLIP2Classifier(BaseClassifier):
+    """Lazy PyTorch runtime for the H100-selected SigLIP2 classifier package."""
+
+    def __init__(
+        self,
+        *,
+        model_path: str | Path | None = None,
+        manifest_path: str | Path | None = None,
+        source_id: str = "siglip2_expanded_vehicle_hpo",
+        device: str = "CPU",
+    ) -> None:
+        self.manifest = load_siglip2_classifier_package(
+            manifest_path
+        ) if manifest_path is not None else load_siglip2_classifier_package()
+        model_dir = Path(model_path) if model_path is not None else packaged_siglip2_model_dir(
+            self.manifest
+        )
+        self.model_dir = model_dir
+        self._runtime: dict[str, Any] | None = None
+        super().__init__(
+            model_id=str(self.manifest.get("base_model", "google/siglip2-base-patch16-224")),
+            source_id=source_id,
+            device=device,
+        )
+
+    def _ready_impl(self) -> bool:
+        status = self._inspect_status_impl()
+        return bool(status["ready"])
+
+    def _inspect_status_impl(self) -> dict[str, Any]:
+        package_status = inspect_packaged_siglip2_package(
+            self.manifest,
+            model_dir=self.model_dir,
+            verify_checksums=False,
+        )
+        dependencies = self._dependency_status()
+        runtime_available = all(dependencies.values())
+        ready = bool(package_status["ready_for_demo"] and runtime_available)
+        if not package_status["ready_for_demo"]:
+            reason = str(package_status["reason"])
+        elif not runtime_available:
+            missing = sorted(name for name, present in dependencies.items() if not present)
+            reason = f"missing classifier runtime dependencies: {', '.join(missing)}"
+        else:
+            reason = "ready"
+
+        return {
+            "ready": ready,
+            "reason": reason,
+            "model_present": package_status["package_present"],
+            "package_id": package_status["package_id"],
+            "artifact_type": package_status["artifact_type"],
+            "model_dir": package_status["model_dir"],
+            "runtime_dependencies": dependencies,
+            "metrics": package_status["metrics"],
+            "selection": package_status["selection"],
+            "missing_paths": package_status["missing_paths"],
+        }
+
+    def _get_missing_paths(self) -> list[Path]:
+        status = inspect_packaged_siglip2_package(self.manifest, model_dir=self.model_dir)
+        return [Path(path) for path in status["missing_paths"]]
+
+    def _dependency_status(self) -> dict[str, bool]:
+        return {
+            "PIL": importlib.util.find_spec("PIL") is not None,
+            "sentencepiece": importlib.util.find_spec("sentencepiece") is not None,
+            "torch": importlib.util.find_spec("torch") is not None,
+            "transformers": importlib.util.find_spec("transformers") is not None,
+        }
+
+    def load(self) -> None:
+        """Load the packaged backbone, processor, and classifier head into memory."""
+
+        self._ensure_loaded()
+
+    def _classify_impl(self, frame_path: Path) -> tuple[str, float, list[dict[str, Any]]]:
+        runtime = self._ensure_loaded()
+        torch = runtime["torch"]
+        image_cls = runtime["Image"]
+        processor = runtime["processor"]
+        backbone = runtime["backbone"]
+        head = runtime["head"]
+        labels = runtime["labels"]
+        device = runtime["device"]
+
+        image = image_cls.open(frame_path).convert("RGB")
+        encoded = processor(images=[image], return_tensors="pt")
+        pixel_values = encoded["pixel_values"].to(device)
+        with torch.no_grad():
+            logits = head(self._image_features(backbone, pixel_values))
+            probabilities = torch.softmax(logits, dim=-1)[0].detach().cpu()
+
+        ranked = sorted(
+            (
+                {
+                    "label": labels[index],
+                    "confidence": float(probabilities[index]),
+                }
+                for index in range(len(labels))
+            ),
+            key=lambda item: item["confidence"],
+            reverse=True,
+        )
+        top = ranked[0]
+        return str(top["label"]), float(top["confidence"]), ranked
+
+    def _ensure_loaded(self) -> dict[str, Any]:
+        if self._runtime is not None:
+            return self._runtime
+
+        if not self.ready():
+            status = self.inspect_status()
+            raise ModelAssetError(f"Cannot load packaged classifier: {status['reason']}")
+
+        import torch
+        from PIL import Image
+        from transformers import AutoModel, AutoProcessor
+
+        torch_device = self._torch_device(torch)
+        processor = AutoProcessor.from_pretrained(
+            str(self.model_dir / "processor"),
+            local_files_only=True,
+            use_fast=False,
+        )
+        backbone = AutoModel.from_pretrained(
+            str(self.model_dir / "backbone"),
+            local_files_only=True,
+        ).to(torch_device)
+        backbone.eval()
+
+        head_payload = torch.load(
+            self.model_dir / "classifier_head.pt",
+            map_location=torch_device,
+            weights_only=False,
+        )
+        labels = tuple(
+            str(label)
+            for label in head_payload.get(
+                "labels",
+                sorted(
+                    self.manifest["dataset"]["label_mapping"],
+                    key=self.manifest["dataset"]["label_mapping"].get,
+                ),
+            )
+        )
+        feature_dim = int(head_payload["feature_dim"])
+        head = torch.nn.Linear(feature_dim, len(labels)).to(torch_device)
+        head.load_state_dict(head_payload["head_state_dict"])
+        head.eval()
+
+        self._runtime = {
+            "Image": Image,
+            "backbone": backbone,
+            "device": torch_device,
+            "head": head,
+            "labels": labels,
+            "processor": processor,
+            "torch": torch,
+        }
+        self.device = str(torch_device)
+        return self._runtime
+
+    def _torch_device(self, torch: Any) -> Any:
+        requested = self.device.lower()
+        if requested == "auto":
+            requested = "cuda" if torch.cuda.is_available() else "cpu"
+        if requested == "cpu":
+            return torch.device("cpu")
+        if requested == "cuda":
+            if not torch.cuda.is_available():
+                raise ModelAssetError("CUDA requested but torch.cuda.is_available() is false")
+            return torch.device("cuda")
+        raise ModelAssetError(
+            f"Packaged PyTorch classifier supports CPU/CUDA devices, not {self.device!r}"
+        )
+
+    @staticmethod
+    def _image_features(backbone: Any, pixel_values: Any) -> Any:
+        if hasattr(backbone, "get_image_features"):
+            return PackagedSigLIP2Classifier._feature_tensor(
+                backbone.get_image_features(pixel_values=pixel_values)
+            )
+        outputs = backbone(pixel_values=pixel_values)
+        return PackagedSigLIP2Classifier._feature_tensor(outputs)
+
+    @staticmethod
+    def _feature_tensor(outputs: Any) -> Any:
+        if getattr(outputs, "image_embeds", None) is not None:
+            return outputs.image_embeds
+        if getattr(outputs, "pooler_output", None) is not None:
+            return outputs.pooler_output
+        if getattr(outputs, "last_hidden_state", None) is not None:
+            return outputs.last_hidden_state.mean(dim=1)
+        if isinstance(outputs, (tuple, list)) and outputs:
+            tensor = outputs[0]
+        else:
+            tensor = outputs
+        if getattr(tensor, "ndim", 0) > 2:
+            return tensor.mean(dim=1)
+        return tensor
+
+
 def create_classifier(
     *,
     use_trained: bool = False,
     model_path: str | Path | None = None,
+    manifest_path: str | Path | None = None,
     device: str = "CPU",
     fallback_to_naive: bool = True,
 ) -> ClassifierBoundary:
@@ -360,11 +570,34 @@ def create_classifier(
         return NaiveZeroShotClassifier(device=device)
 
     if model_path is None:
+        packaged = PackagedSigLIP2Classifier(device=device, manifest_path=manifest_path)
+        if packaged.ready():
+            return packaged
         if fallback_to_naive:
             return NaiveZeroShotClassifier(device=device)
-        raise ModelAssetError("model_path required when use_trained=True")
+        status = packaged.inspect_status()
+        raise ModelAssetError(
+            f"Default packaged classifier is not ready: {status['reason']}",
+            missing_paths=packaged._get_missing_paths(),
+        )
 
     model_path = Path(model_path)
+    packaged = PackagedSigLIP2Classifier(
+        model_path=model_path,
+        manifest_path=manifest_path,
+        device=device,
+    )
+    package_status = packaged.inspect_status()
+    if package_status["model_present"]:
+        if packaged.ready():
+            return packaged
+        if fallback_to_naive:
+            return NaiveZeroShotClassifier(device=device)
+        raise ModelAssetError(
+            f"Packaged classifier is not ready: {package_status['reason']}",
+            missing_paths=packaged._get_missing_paths(),
+        )
+
     model_xml = model_path / "openvino_model.xml"
     model_bin = model_path / "openvino_model.bin"
 
