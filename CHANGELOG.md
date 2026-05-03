@@ -108,6 +108,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hugging Face package wiring for `Kearm/siglip2-expanded-vehicle-hpo-best`,
   including manifest Hub metadata and `scripts/fetch_siglip2_classifier_package.py`
   for repeatable `hf download` retrieval with checksum validation.
+- First-viewport T+32 incident strip and POV marker that spell out the route
+  contact, RF evidence, route distance, local swarm retasks, and held sync gate
+  when the scripted incident fires.
+- Browser model-identification chip for the generated H100 classifier cue, so
+  the static demo exposes a model-backed label before the incident starts
+  without revealing the scripted trigger time.
 
 ### Changed
 - The browser field view now applies RT geometry decisions to drone standoff,

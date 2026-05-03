@@ -88,6 +88,10 @@ Switch between feeds and show that multiple drones and the ground team are still
 ### 2:10-3:00 - Corridor And Cues
 
 Show the corridor on both sides of the view. Call out the highest-priority contact and why it matters.
+Before the incident, point out that the watch strip is armed without revealing
+the scripted trigger time. After the incident fires, use the strip under the
+Field C2 view: it names Unknown 31, the RF cue, route distance, retasks, and
+the held sync gate.
 
 If `web/classifier_cue.js` was regenerated successfully, point to the H100
 classifier cue in Scene Understanding or Fusion Node Status. That value is a

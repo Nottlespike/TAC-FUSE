@@ -113,6 +113,10 @@ test("operator surface is dense and the selected platform is animated", async ({
   await expect(page.locator(".earth-pane")).toBeHidden();
   await expect(page.locator("#mode-status")).toContainText("Fusion Node Authority");
   await expect(page.locator("#fusion-badge")).toContainText("Route Guard");
+  await expect(page.locator("#incident-strip")).toContainText("Incident Watch Armed");
+  await expect(page.locator("#incident-strip")).not.toContainText("T+32");
+  await expect(page.locator("#incident-strip")).toContainText("Model ID:");
+  await expect(page.locator(".model-identification").first()).toContainText("Model ID:");
   await expect(page.locator(".metric-strip")).toContainText("Power");
   await expect(page.locator(".metric-strip")).toContainText("Sync");
   await expect(page.locator(".metric-strip")).toContainText("Guard");
@@ -226,6 +230,25 @@ test("operator surface is dense and the selected platform is animated", async ({
   await page.locator("#mode-degraded").click();
   await expect(page.locator("#mode-status")).toContainText("Local C2 Active");
   await expect(page.locator("#mode-degraded")).toHaveClass(/active/);
+
+  await page.evaluate(() => {
+    simTime = DEMO_INCIDENT_TRIGGER_S;
+    triggerLocalC2Incident();
+    renderFrame();
+  });
+  await expect(page.locator("#incident-strip")).toHaveClass(/active/);
+  await expect(page.locator("#incident-strip")).toContainText("T+32s Route Contact Incident");
+  await expect(page.locator("#incident-strip")).toContainText("Unknown 31 entered the guarded corridor");
+  await expect(page.locator("#incident-strip")).toContainText("contact confidence");
+  await expect(page.locator("#incident-strip")).toContainText("RF confidence");
+  await expect(page.locator("#incident-strip")).toContainText("4 retasks staged");
+  await expect(page.locator("#alert-list")).toContainText("Unknown Contact In Corridor");
+  const incidentOverflow = await page.locator("#incident-strip").evaluate((strip) =>
+    Array.from(strip.querySelectorAll("*"))
+      .filter((node) => node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1)
+      .map((node) => node.textContent?.trim()),
+  );
+  expect(incidentOverflow).toEqual([]);
 
   await page.screenshot({
     path: "test-results/tac-fuse-operator-desktop.png",

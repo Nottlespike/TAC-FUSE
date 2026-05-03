@@ -330,6 +330,13 @@ const localC2Incident = {
   detail: "RF pressure and unknown route contact detected",
   triggeredAt: null,
   takeoverCommands: 0,
+  trackId: "scene-unknown-31",
+  signalId: "scene-signal-04",
+  routeDistanceM: null,
+  contactConfidence: null,
+  signalConfidence: null,
+  evidence: [],
+  actions: [],
 };
 
 // Swarm-wide tasking state — single-operator C2 proof
@@ -525,6 +532,18 @@ function classifierCueDetail() {
   return `${label} · ${classifierCueConfidencePct(cue)}% · ${latency}`;
 }
 
+function classifierCueModelId() {
+  const cue = classifierCueClassification();
+  if (!cue) return "No Model";
+  return String(cue.model_id || classifierCue?.runtime?.model_id || "SigLIP2");
+}
+
+function classifierIdentificationCopy() {
+  const cue = classifierCueClassification();
+  if (!cue) return "Model ID Pending";
+  return `Model ID: ${displayClassifierCueLabel(cue.class_label)} · ${classifierCueConfidencePct(cue)}%`;
+}
+
 function classifierCueRows() {
   const cue = classifierCueClassification();
   if (!cue) return null;
@@ -677,13 +696,18 @@ function triggerLocalC2Incident() {
     routeContact.routeIndex = 3;
     routeContact.confidence = Math.max(routeContact.confidence, 0.74);
     routeContact.latency = Math.min(routeContact.latency, 42);
+    routeContact.incidentTrack = true;
   }
 
   const signal = sceneClassTargets.find((target) => target.id === "scene-signal-04");
   if (signal) {
     signal.confidence = Math.max(signal.confidence, 0.86);
     signal.latency = Math.min(signal.latency, 38);
+    signal.incidentTrack = true;
   }
+  localC2Incident.routeDistanceM = routeContact ? distanceToRouteGuard(routeContact) : null;
+  localC2Incident.contactConfidence = routeContact ? routeContact.confidence : null;
+  localC2Incident.signalConfidence = signal ? signal.confidence : null;
 
   pushLog("Incident: Unknown Contact Entered Route Corridor; Local C2 Took Authority.");
   const takeoverTasks = [
@@ -702,6 +726,17 @@ function triggerLocalC2Incident() {
     }
   }
   localC2Incident.takeoverCommands = takeoverTasks.length;
+  localC2Incident.evidence = [
+    "Unknown 31 entered guarded corridor",
+    "RF Source 04 confidence rose to 86%",
+    "Enterprise sync remained closed",
+  ];
+  localC2Incident.actions = [
+    "Alpha and Bravo moved to corridor stations",
+    "Charlie held outside the conflict pocket",
+    "Delta shifted to overwatch",
+    "Four commands staged for operator-gated sync",
+  ];
   pushLog("Local C2 Takeover Complete: Swarm Retasked, Sync Gate Holding Commands.");
 }
 
@@ -1113,6 +1148,19 @@ function distanceToRouteGuard(point) {
     );
   }
   return minDistance;
+}
+
+function incidentContact() {
+  return sceneClassTargets.find((target) => target.id === localC2Incident.trackId) || null;
+}
+
+function incidentSignal() {
+  return sceneClassTargets.find((target) => target.id === localC2Incident.signalId) || null;
+}
+
+function incidentRouteDistance() {
+  const contact = incidentContact();
+  return contact ? distanceToRouteGuard(contact) : null;
 }
 
 function distancePointToSegment(point, a, b) {
@@ -1947,10 +1995,40 @@ function drawPov(feed, visible) {
   drawPov3DGrid(feed, width, height);
   drawPovRouteGuardCorridor(feed, width, height);
   drawPovHazards(feed, width, height);
+  drawPovIncidentCue(feed, width, height);
   drawPovDetectionFrustum(feed, width, height);
   drawPovObjects(feed, visible, width, height);
   drawPovTelemetry(feed, visible, width, height);
   drawPovQuantificationPanel(visible, width, height);
+}
+
+function drawPovIncidentCue(feed, width, height) {
+  if (!localC2Incident.active) return;
+  const contact = incidentContact();
+  if (!contact) return;
+  const projected = projectPovMapPoint(
+    feed,
+    contact,
+    width,
+    height,
+    contact.z - FIELD_VIEW_ANCHOR.z,
+  );
+  povCtx.save();
+  povCtx.strokeStyle = "rgba(255, 93, 93, 0.94)";
+  povCtx.fillStyle = "rgba(255, 93, 93, 0.16)";
+  povCtx.lineWidth = 3;
+  povCtx.setLineDash([10, 7]);
+  povCtx.beginPath();
+  povCtx.arc(projected.x, projected.y, 28, 0, Math.PI * 2);
+  povCtx.stroke();
+  povCtx.setLineDash([]);
+  povCtx.beginPath();
+  povCtx.arc(projected.x, projected.y, 42, 0, Math.PI * 2);
+  povCtx.stroke();
+  povCtx.fillStyle = "#ffb7b7";
+  povCtx.font = "12px Inter, Arial";
+  drawCanvasLabel(povCtx, "T+32 INCIDENT", projected.x + 36, projected.y - 18, width, height);
+  povCtx.restore();
 }
 
 function detectionClass(asset) {
@@ -2079,6 +2157,10 @@ function drawPovRouteGuardCorridor(feed, width, height) {
   povCtx.lineCap = "round";
   povCtx.lineJoin = "round";
 
+  const incidentDistance = incidentRouteDistance();
+  const incidentActiveOnRoute = localC2Incident.active
+    && incidentDistance !== null
+    && incidentDistance <= ROUTE_GUARD_HALF_WIDTH_M + 24;
   povCtx.strokeStyle = "rgba(85, 214, 166, 0.12)";
   povCtx.lineWidth = 20;
   povCtx.beginPath();
@@ -2086,6 +2168,16 @@ function drawPovRouteGuardCorridor(feed, width, height) {
     drawPovProjectedSegment(feed, ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], width, height);
   }
   povCtx.stroke();
+
+  if (incidentActiveOnRoute) {
+    povCtx.strokeStyle = "rgba(255, 93, 93, 0.28)";
+    povCtx.lineWidth = 32;
+    povCtx.beginPath();
+    for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+      drawPovProjectedSegment(feed, ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], width, height);
+    }
+    povCtx.stroke();
+  }
 
   for (const offset of [-ROUTE_GUARD_HALF_WIDTH_M, ROUTE_GUARD_HALF_WIDTH_M]) {
     povCtx.strokeStyle = "rgba(85, 214, 166, 0.72)";
@@ -2261,6 +2353,8 @@ function priorityLabeledObjects(objects, feedId) {
       if (threatDelta) return threatDelta;
       const friendlyDelta = (a.affiliation === "friendly" ? 1 : 0) - (b.affiliation === "friendly" ? 1 : 0);
       if (friendlyDelta) return friendlyDelta;
+      const classifierDelta = (b.classifierCue ? 1 : 0) - (a.classifierCue ? 1 : 0);
+      if (classifierDelta) return classifierDelta;
       const rangeDelta = a.range - b.range;
       if (Math.abs(rangeDelta) > 1) return rangeDelta;
       return b.detectionConfidence - a.detectionConfidence;
@@ -2379,9 +2473,10 @@ function rectsOverlap(a, b) {
 
 function placeDetectionLabel(obj, width, height, placedRects) {
   const labelW = 228;
-  const labelH = 88;
-  const minLabelY = Math.min(height - labelH - 10, Math.max(160, height * 0.38));
-  const maxLabelY = height - labelH - 10;
+  const labelH = obj.classifierCue || obj.trainingClass ? 112 : 88;
+  const incidentReserveH = 100;
+  const maxLabelY = Math.max(10, height - labelH - incidentReserveH);
+  const minLabelY = Math.min(maxLabelY, Math.max(160, height * 0.38));
   const maxLabelX = width - labelW - 10;
   const candidates = [
     { x: obj.air.x + 16, y: obj.air.y - 14 },
@@ -2501,6 +2596,14 @@ function addDetectionLabel(obj, width, height, placedRects) {
     grid.appendChild(chip);
   }
   label.append(header, grid);
+  if (obj.classifierCue || obj.trainingClass) {
+    const modelId = document.createElement("div");
+    modelId.className = "model-identification";
+    modelId.textContent = obj.classifierCue
+      ? `${classifierIdentificationCopy()} · ${classifierCueModelId()}`
+      : `Mock ID: ${displayClassifierCueLabel(obj.trainingClass)}`;
+    label.appendChild(modelId);
+  }
   label.addEventListener("click", (event) => {
     event.stopPropagation();
     selectFusedObject(obj);
@@ -2764,7 +2867,7 @@ function renderHardware(feed, hits) {
       "Demo Incident",
       localC2Incident.active
         ? `T+${localC2Incident.triggeredAt.toFixed(0)}s Local C2 Took Authority`
-        : `Armed T+${DEMO_INCIDENT_TRIGGER_S}s`,
+        : "Armed, trigger masked",
       localC2Incident.active ? "Watch" : "Good",
     ],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
@@ -2818,6 +2921,59 @@ function renderAlerts(feed, hits, scores) {
   document.querySelector("#alert-list").innerHTML = alerts
     .map(([level, text]) => `<div class="alert-row ${level}">${text}</div>`)
     .join("");
+}
+
+function renderIncidentStrip() {
+  const el = document.querySelector("#incident-strip");
+  if (!el) return;
+
+  const contact = incidentContact();
+  const signal = incidentSignal();
+  const routeDistance = localC2Incident.routeDistanceM ?? incidentRouteDistance();
+  const contactConfidence = localC2Incident.contactConfidence ?? contact?.confidence ?? 0;
+  const signalConfidence = localC2Incident.signalConfidence ?? signal?.confidence ?? 0;
+  const armed = !localC2Incident.active;
+  const title = armed
+    ? "Incident Watch Armed"
+    : `T+${localC2Incident.triggeredAt.toFixed(0)}s Route Contact Incident`;
+  const summary = armed
+    ? `Unknown route contact and RF pressure are monitored locally. ${classifierIdentificationCopy()} is live in the mock track label.`
+    : `${contact?.callsign || "Unknown 31"} entered the guarded corridor; local C2 retasked the swarm and held enterprise sync.`;
+  const chips = armed
+    ? [
+        "Trigger masked",
+        "Sync closed",
+        classifierIdentificationCopy(),
+        classifierCueModelId(),
+      ]
+    : [
+        `${formatMeters(routeDistance ?? 0)} from route`,
+        `${Math.round(contactConfidence * 100)}% contact confidence`,
+        `${Math.round(signalConfidence * 100)}% RF confidence`,
+        `${localC2Incident.takeoverCommands} retasks staged`,
+      ];
+  const actionRows = (
+    armed
+      ? ["Waiting for threshold crossing", "Model cue already generated from local frame"]
+      : localC2Incident.actions
+  )
+    .slice(0, 4)
+    .map((item) => `<span>${item}</span>`)
+    .join("");
+
+  el.classList.toggle("active", localC2Incident.active);
+  el.innerHTML = `
+    <div class="incident-main">
+      <span class="incident-state">${armed ? "WATCH" : "ACTIVE"}</span>
+      <div>
+        <strong>${title}</strong>
+        <p>${summary}</p>
+        <div class="model-identification incident-model-identification">${classifierIdentificationCopy()}</div>
+      </div>
+    </div>
+    <div class="incident-chips">${chips.map((chip) => `<span>${chip}</span>`).join("")}</div>
+    <div class="incident-actions">${actionRows}</div>
+  `;
 }
 
 function updateModeChrome() {
@@ -2907,7 +3063,7 @@ function renderDeniedProof() {
       status: localC2Incident.active ? "active" : "degraded",
       detail: localC2Incident.active
         ? `${localC2Incident.takeoverCommands} local retasks staged at T+${localC2Incident.triggeredAt.toFixed(0)}s`
-        : `Armed for T+${DEMO_INCIDENT_TRIGGER_S}s route incident`,
+        : "Armed for route incident",
     },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
     { name: "Automatic Corridor Guard", status: "active", detail: `${rtControlBackendLabel()} Controls Drone Standoff And Hold Decisions` },
@@ -3001,6 +3157,7 @@ function renderFrame() {
   renderHardware(feed, hits);
   renderVision(scores);
   renderAlerts(feed, hits, scores);
+  renderIncidentStrip();
   renderSwarmC2();
   renderDeniedProof();
   renderMissionLog();

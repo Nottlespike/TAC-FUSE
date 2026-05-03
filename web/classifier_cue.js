@@ -8,19 +8,19 @@ window.TAC_FUSE_CLASSIFIER_CUE = {
         "label": "low_power_return_corridor"
       },
       {
-        "confidence": 0.1731456071138382,
+        "confidence": 0.17314571142196655,
         "label": "clear_corridor"
       },
       {
-        "confidence": 0.042950961738824844,
+        "confidence": 0.04295086860656738,
         "label": "reduced_visibility_field_conditions"
       },
       {
-        "confidence": 0.028614748269319534,
+        "confidence": 0.02861480414867401,
         "label": "drone_near_restricted_area"
       },
       {
-        "confidence": 0.025930147618055344,
+        "confidence": 0.025930115953087807,
         "label": "low_altitude_clutter"
       },
       {
@@ -32,17 +32,17 @@ window.TAC_FUSE_CLASSIFIER_CUE = {
     "confidence": 0.7140949964523315,
     "device": "cpu",
     "frame_path": "reports/classifier_cue_route_guard.jpg",
-    "inference_latency_ms": 3707.1762459963793,
+    "inference_latency_ms": 2403.5928749945015,
     "model_id": "google/siglip2-base-patch16-224",
     "source_id": "siglip2_expanded_vehicle_hpo",
-    "timestamp": "2026-05-03T17:55:36.086408+00:00",
+    "timestamp": "2026-05-03T20:06:50.994108+00:00",
     "track_id": "scene-vehicle-17"
   },
   "frame": {
     "path": "reports/classifier_cue_route_guard.jpg",
     "source": "synthetic_route_guard_vehicle_frame"
   },
-  "generated_at": "2026-05-03T17:55:36Z",
+  "generated_at": "2026-05-03T20:06:50Z",
   "package": {
     "artifact_type": "pytorch_siglip2_image_classifier",
     "base_model": "google/siglip2-base-patch16-224",
@@ -101,19 +101,19 @@ window.TAC_FUSE_CLASSIFIER_CUE = {
       "label": "low_power_return_corridor"
     },
     {
-      "confidence": 0.1731456071138382,
+      "confidence": 0.17314571142196655,
       "label": "clear_corridor"
     },
     {
-      "confidence": 0.042950961738824844,
+      "confidence": 0.04295086860656738,
       "label": "reduced_visibility_field_conditions"
     },
     {
-      "confidence": 0.028614748269319534,
+      "confidence": 0.02861480414867401,
       "label": "drone_near_restricted_area"
     },
     {
-      "confidence": 0.025930147618055344,
+      "confidence": 0.025930115953087807,
       "label": "low_altitude_clutter"
     },
     {
