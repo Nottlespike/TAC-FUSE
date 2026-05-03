@@ -28,7 +28,9 @@ ARTIFACT_NAMES = (
 )
 
 # Valid operation types that represent a completed state-first command.
-_COMMAND_OPS = frozenset({"create", "update", "cancel", "retask"})
+# Must stay in sync with every task operation MissionStateStore produces:
+# create, update, cancel, retask, complete (via retask/complete/dispatch_command).
+_COMMAND_OPS = frozenset({"create", "update", "cancel", "retask", "complete"})
 
 
 def build_foundry_export(store: MissionStateStore) -> dict[str, Any]:
