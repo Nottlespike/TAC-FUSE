@@ -1823,6 +1823,39 @@ function drawPovRouteGuardCorridor(feed, width, height) {
   povCtx.restore();
 }
 
+function drawPovActiveRoutePlan(feed, width, height) {
+  if (activeRoutePlan.version === 0) return;
+  const start = projectPovTerrainPoint(feed, feed, width, height);
+  const end = projectPovTerrainPoint(feed, activeRoutePlan.target, width, height);
+  povCtx.save();
+  povCtx.strokeStyle = "rgba(85, 214, 166, 0.95)";
+  povCtx.lineWidth = 3;
+  povCtx.setLineDash([10, 7]);
+  povCtx.beginPath();
+  povCtx.moveTo(start.x, start.y);
+  povCtx.lineTo(end.x, end.y);
+  povCtx.stroke();
+  povCtx.setLineDash([]);
+  povCtx.fillStyle = "#55d6a6";
+  povCtx.strokeStyle = "rgba(8, 13, 15, 0.9)";
+  povCtx.lineWidth = 2;
+  povCtx.beginPath();
+  povCtx.arc(end.x, end.y, 7, 0, Math.PI * 2);
+  povCtx.fill();
+  povCtx.stroke();
+  povCtx.fillStyle = "rgba(8, 13, 15, 0.86)";
+  povCtx.strokeStyle = "rgba(85, 214, 166, 0.65)";
+  povCtx.fillRect(end.x + 10, end.y - 28, 154, 40);
+  povCtx.strokeRect(end.x + 10, end.y - 28, 154, 40);
+  povCtx.fillStyle = "#55d6a6";
+  povCtx.font = "700 12px Inter, Arial";
+  povCtx.fillText("Local Route Plan", end.x + 18, end.y - 12);
+  povCtx.fillStyle = "#f2efe5";
+  povCtx.font = "12px Inter, Arial";
+  povCtx.fillText(`${activeRoutePlan.status} · ${activeRoutePlan.score}`, end.x + 18, end.y + 4);
+  povCtx.restore();
+}
+
 function drawPovHazards(feed, width, height) {
   const scale = mapProjectionScale(width, height);
   for (const hazard of hazards) {
@@ -2193,7 +2226,10 @@ function renderStagedPacket() {
   }
   packetEl.innerHTML = stagedCommands
     .slice(0, 5)
-    .map((cmd) => `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${displayCommand(cmd.command)}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`)
+    .map((cmd) => {
+      const planCopy = cmd.routePlan ? ` · ${cmd.routePlan.status} ${cmd.routePlan.score}` : "";
+      return `<div class="packet-item"><span class="packet-id">${cmd.id}</span><span class="packet-cmd">${cmd.callsign} ${displayCommand(cmd.command)}${planCopy}</span><span class="packet-ts">T+${cmd.ts.toFixed(1)}s</span></div>`;
+    })
     .join("");
 }
 
@@ -2204,11 +2240,13 @@ function renderHardware(feed, hits) {
   const unknowns = sceneClassTargets.filter((item) => item.type.startsWith("unknown"));
   const npuReady = feeds.filter((item) => item.npu).length;
   const liveTracks = [...fusedTracks.values()].filter((track) => simTime - track.lastSeen <= TRACK_MEMORY_SECONDS).length;
+  const routePlanFresh = activeRoutePlan.version > 0 && simTime - activeRoutePlan.updatedAt <= 22;
   const rows = [
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["CUDA/RTX BVH", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${rayPath.toUpperCase()}`, "Good"],
+    ["Route Optimizer", `${activeRoutePlan.status} · ${activeRoutePlan.lane} · Score ${activeRoutePlan.score}`, routePlanFresh ? "Good" : "Watch"],
+    ["CUDA/RTX Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${rayPath.toUpperCase()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
@@ -2223,8 +2261,8 @@ function renderHardware(feed, hits) {
   const criticalHit = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   const nearestHit = hits[0];
   const routeState = criticalHit ? "Rerouting" : nearestHit ? "Monitoring" : "Clear";
-  setText("#bvh-label", routeState);
-  setText("#fusion-badge", criticalHit ? "Route Guard Rerouting" : `Route Guard ${routeState}`);
+  setText("#bvh-label", routePlanFresh ? `${activeRoutePlan.status} · ${activeRoutePlan.lane}` : routeState);
+  setText("#fusion-badge", routePlanFresh ? "Route Guard Replanned" : criticalHit ? "Route Guard Rerouting" : `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",
     "Route Guard · Cut Off From Command · Laptop C2 Holds Corridor",
