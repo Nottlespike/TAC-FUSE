@@ -10,57 +10,61 @@
     <header class="topbar">
         <div class="brand">
             <strong>TAC-FUSE</strong>
-            <span id="mode-status" class="mode-pill online">ONLINE</span>
+            <span id="mode-status" class="mode-pill offline">OFFLINE FIELD NODE</span>
         </div>
-        <div class="mode-controls" aria-label="Connectivity mode">
-            <button class="mode-btn active" data-mode="online">Online</button>
-            <button class="mode-btn" data-mode="degraded">Degraded</button>
-            <button class="mode-btn" data-mode="offline">Offline</button>
+        <div class="capability-strip" aria-label="Local capability summary">
+            <span>Local C2</span>
+            <span>RTX BVH</span>
+            <span>Intel NPU</span>
+            <span>SQLite</span>
+            <span>Foundry export</span>
         </div>
         <div class="top-metrics">
-            <span><strong id="sync-count">0</strong> queued</span>
-            <span id="foundry-status">Foundry uplink live</span>
+            <span><strong id="sync-count">0</strong> staged</span>
+            <span id="foundry-status">Foundry export staged</span>
             <span id="clock-label">T+0.0s</span>
         </div>
     </header>
 
     <main class="workspace">
-        <section class="swarm-pane">
+        <section class="earth-pane">
             <div class="section-heading">
-                <h1>Swarm</h1>
+                <div>
+                    <h1>Offline Theater</h1>
+                    <span class="subtle">Local laptop authority, simulated terrain, no cloud dependency</span>
+                </div>
                 <span id="swarm-count" class="subtle">5 assets</span>
             </div>
 
             <div class="swarm-map-shell">
-                <canvas id="swarm-map" width="720" height="560"></canvas>
+                <canvas id="swarm-map" class="earth-canvas" width="980" height="680"></canvas>
+                <div class="map-hud">
+                    <strong>LOCAL BVH</strong>
+                    <span id="map-hud-copy">RTX ray cores staged, CPU parity active</span>
+                </div>
                 <div class="map-badge" id="bvh-badge">RTX BVH local</div>
             </div>
 
-            <div class="left-grid">
-                <section>
+            <div class="earth-footer">
+                <section class="panel">
                     <h2>Assets</h2>
                     <div id="asset-list" class="asset-list"></div>
                 </section>
-                <section>
-                    <h2>Command</h2>
-                    <div class="command-stack">
-                        <button id="resume-mission" class="command-btn active">Resume</button>
-                        <button id="patrol-area" class="command-btn">Patrol</button>
-                        <button id="return-home" class="command-btn">Return</button>
-                        <button id="hold-position" class="command-btn">Hold</button>
-                        <button id="toggle-bvh" class="command-btn">BVH Path</button>
-                        <button id="emergency-stop" class="command-btn danger">Abort</button>
-                    </div>
+                <section class="panel">
+                    <h2>Offline Command Queue</h2>
+                    <div id="command-queue" class="mission-log compact-log"></div>
                 </section>
             </div>
         </section>
 
-        <section class="pov-pane">
+        <section class="operator-pane">
             <div class="section-heading">
-                <h1 id="pov-title">Alpha POV</h1>
+                <div>
+                    <h1 id="pov-title">Alpha POV</h1>
+                    <span class="subtle" id="frame-counter">Local replay</span>
+                </div>
                 <div class="frame-controls">
                     <button id="prev-frame" class="icon-btn" title="Previous frame">‹</button>
-                    <span id="frame-counter">Frame 1/18</span>
                     <button id="next-frame" class="icon-btn" title="Next frame">›</button>
                 </div>
             </div>
@@ -70,31 +74,48 @@
                 <div id="pov-overlay" class="pov-overlay"></div>
             </div>
 
-            <div class="metric-strip">
-                <div>
-                    <span class="metric-label">Range Gate</span>
-                    <strong id="range-label">650 m</strong>
-                </div>
-                <div>
-                    <span class="metric-label">BVH Path</span>
-                    <strong id="bvh-label">RTX cores</strong>
-                </div>
-                <div>
-                    <span class="metric-label">Vision</span>
-                    <strong id="field-condition-label">Clear corridor</strong>
-                </div>
-                <div>
-                    <span class="metric-label">NPU</span>
-                    <strong id="npu-label">Local emulation</strong>
+            <div class="operator-dock">
+                <section class="panel command-panel">
+                    <h2>C2</h2>
+                    <div class="command-stack">
+                        <button id="resume-mission" class="command-btn active">Resume</button>
+                        <button id="patrol-area" class="command-btn">Patrol</button>
+                        <button id="return-home" class="command-btn">Return</button>
+                        <button id="hold-position" class="command-btn">Hold</button>
+                        <button id="toggle-bvh" class="command-btn">BVH Path</button>
+                        <button id="emergency-stop" class="command-btn danger">Abort</button>
+                    </div>
+                </section>
+                <div class="metric-strip">
+                    <div>
+                        <span class="metric-label">Range</span>
+                        <strong id="range-label">650 m</strong>
+                    </div>
+                    <div>
+                        <span class="metric-label">BVH</span>
+                        <strong id="bvh-label">CPU parity</strong>
+                    </div>
+                    <div>
+                        <span class="metric-label">Vision</span>
+                        <strong id="field-condition-label">Clear corridor</strong>
+                    </div>
+                    <div>
+                        <span class="metric-label">NPU</span>
+                        <strong id="npu-label">Local</strong>
+                    </div>
                 </div>
             </div>
 
             <div class="right-grid">
-                <section class="hardware-panel">
-                    <h2>Local Hardware</h2>
-                    <div id="hardware-list" class="status-list"></div>
+                <section class="panel">
+                    <h2>Offline Stack</h2>
+                    <div class="state-explainer">
+                        <div><strong>C2</strong><span>Operator commands apply locally.</span></div>
+                        <div><strong>BVH</strong><span>Ray queries stay on laptop hardware.</span></div>
+                        <div><strong>Export</strong><span>Foundry bundle waits for reconnect.</span></div>
+                    </div>
                 </section>
-                <section>
+                <section class="panel">
                     <h2>Field Vision</h2>
                     <div class="vision-card">
                         <span class="metric-label">Model</span>
@@ -102,17 +123,17 @@
                     </div>
                     <div id="vision-scores" class="vision-scores"></div>
                 </section>
-                <section>
+                <section class="panel">
+                    <h2>Local Hardware</h2>
+                    <div id="hardware-list" class="status-list"></div>
+                </section>
+                <section class="panel">
                     <h2>Alerts</h2>
                     <div id="alert-list" class="alert-list"></div>
                 </section>
-                <section>
+                <section class="panel wide">
                     <h2>Mission Log</h2>
                     <div id="mission-log" class="mission-log"></div>
-                </section>
-                <section>
-                    <h2>Command Queue</h2>
-                    <div id="command-queue" class="mission-log"></div>
                 </section>
             </div>
         </section>

@@ -14,12 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local ray-query/BVH boundary with RTX-runtime inspection and CPU parity output shape.
 - RTX prerequisite script referenced by the live demo runbook.
 - Browser-based graphics emulator with a live swarm world, selected-drone POV, operator commands, online/offline queue behavior, BVH nodes, and local ray-query visualization.
+- Offline-first hackathon UI that foregrounds local C2, RTX BVH, Intel NPU inference, SQLite persistence, and staged Foundry export without live/degraded mode controls.
 - Foundry-compatible local export artifacts for mission events, asset states, tasks, alerts, and sync manifest.
 - Seeded restricted-zone entries, dashboard-state writes, and idempotent local persistence APIs for route conflicts and restricted entries.
 
 ### Changed
 - Replaced the hackathon playbook with runnable repo structure and offline validation.
 - Block external sync unless connectivity is fully ONLINE; DEGRADED is now local-state-only.
+- Reworked the browser emulator from a block/grid status dashboard into a more cinematic offline field-node theater with terrain styling, compact panels, and visible local hardware proof points.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.

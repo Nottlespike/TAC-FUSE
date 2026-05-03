@@ -92,7 +92,7 @@ const groundTeam = {
 };
 
 let selectedId = "uav-alpha";
-let connectivityMode = "online";
+let connectivityMode = "offline";
 let rayPath = "rtx";
 let simPaused = false;
 let simTime = 0;
@@ -128,7 +128,7 @@ function issueCommand(command) {
     callsign: drone.callsign,
     command,
     mode: connectivityMode,
-    status: connectivityMode === "online" ? "sent" : "queued",
+    status: "local",
   };
   commandSeq += 1;
   commandQueue.unshift(record);
@@ -143,14 +143,13 @@ function issueCommand(command) {
     drone.command = "patrol";
     drone.target = { x: 680, y: 360 };
   } else if (command === "abort") {
-    connectivityMode = "offline";
     drones.forEach((item) => {
       item.command = "hold";
     });
   } else if (command === "resume") {
     drone.command = "patrol";
   }
-  pushLog(`${record.callsign} command ${command.toUpperCase()} ${record.status}.`);
+  pushLog(`${record.callsign} command ${command.toUpperCase()} applied locally.`);
 }
 
 function stepSimulation(dt) {
@@ -223,14 +222,11 @@ function buildBvhNodes() {
 }
 
 function modeCopy() {
-  const queued = commandQueue.filter((item) => item.status === "queued").length;
-  if (connectivityMode === "online") {
-    return { sync: queued, foundry: "Foundry uplink live", npu: "NPU local" };
-  }
-  if (connectivityMode === "degraded") {
-    return { sync: queued + 2, foundry: "Foundry delayed", npu: "NPU local" };
-  }
-  return { sync: queued + 6, foundry: "Foundry queued", npu: "NPU local" };
+  return {
+    sync: commandQueue.length,
+    foundry: "Foundry export staged",
+    npu: "Intel NPU local",
+  };
 }
 
 function classifyFrame(drone, visible) {
@@ -291,27 +287,67 @@ function worldToCanvas(asset, width, height) {
   return { x: (asset.x / WORLD_M) * width, y: (asset.y / WORLD_M) * height };
 }
 
+function drawTerrainBackdrop(ctx, width, height) {
+  const terrain = ctx.createLinearGradient(0, 0, width, height);
+  terrain.addColorStop(0, "#1c2a2a");
+  terrain.addColorStop(0.34, "#273424");
+  terrain.addColorStop(0.68, "#17261f");
+  terrain.addColorStop(1, "#0c1415");
+  ctx.fillStyle = terrain;
+  ctx.fillRect(0, 0, width, height);
+
+  for (let band = 0; band < 12; band += 1) {
+    const y = height * (0.12 + band * 0.075);
+    ctx.strokeStyle = band % 3 === 0 ? "rgba(230,195,92,0.16)" : "rgba(245,241,232,0.08)";
+    ctx.lineWidth = band % 3 === 0 ? 1.4 : 1;
+    ctx.beginPath();
+    for (let x = -20; x <= width + 20; x += 28) {
+      const wave = Math.sin(x * 0.012 + band * 0.9) * height * 0.028;
+      const ridge = y + wave + Math.cos(x * 0.006 + band) * height * 0.018;
+      if (x === -20) ctx.moveTo(x, ridge);
+      else ctx.lineTo(x, ridge);
+    }
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "rgba(121,184,255,0.06)";
+  ctx.beginPath();
+  ctx.moveTo(width * 0.08, height * 0.88);
+  ctx.bezierCurveTo(width * 0.22, height * 0.68, width * 0.34, height * 0.62, width * 0.48, height * 0.44);
+  ctx.bezierCurveTo(width * 0.62, height * 0.26, width * 0.78, height * 0.18, width * 0.94, height * 0.08);
+  ctx.lineTo(width, height * 0.16);
+  ctx.bezierCurveTo(width * 0.8, height * 0.3, width * 0.65, height * 0.38, width * 0.5, height * 0.58);
+  ctx.bezierCurveTo(width * 0.35, height * 0.78, width * 0.2, height * 0.86, width * 0.08, height);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawRoadNetwork(ctx, width, height) {
+  ctx.strokeStyle = "rgba(230,195,92,0.58)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(width * 0.05, height * 0.82);
+  ctx.bezierCurveTo(width * 0.24, height * 0.72, width * 0.32, height * 0.52, width * 0.48, height * 0.5);
+  ctx.bezierCurveTo(width * 0.68, height * 0.48, width * 0.8, height * 0.36, width * 0.96, height * 0.31);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(245,241,232,0.26)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(width * 0.18, height * 0.94);
+  ctx.lineTo(width * 0.36, height * 0.66);
+  ctx.lineTo(width * 0.58, height * 0.56);
+  ctx.stroke();
+}
+
 function drawSwarmMap() {
   resizeCanvas(swarmCanvas);
   const width = swarmCanvas.width;
   const height = swarmCanvas.height;
   const ctx = swarmCtx;
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#10171b";
-  ctx.fillRect(0, 0, width, height);
-
-  ctx.strokeStyle = "#253239";
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= 10; i += 1) {
-    const x = (i / 10) * width;
-    const y = (i / 10) * height;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
+  drawTerrainBackdrop(ctx, width, height);
+  drawRoadNetwork(ctx, width, height);
 
   for (const node of buildBvhNodes()) {
     ctx.strokeStyle = node.severity === "critical" ? "rgba(255, 93, 93, 0.42)" : "rgba(230, 195, 92, 0.35)";
@@ -423,12 +459,34 @@ function drawPov(drone, visible) {
   povCtx.fillStyle = terrain;
   povCtx.fillRect(0, horizon, width, height - horizon);
 
+  povCtx.fillStyle = "rgba(55, 74, 70, 0.55)";
+  povCtx.beginPath();
+  povCtx.moveTo(0, horizon);
+  for (let i = 0; i <= 8; i += 1) {
+    const x = (i / 8) * width;
+    const y = horizon - Math.sin(i * 1.7) * 28 - 34;
+    povCtx.lineTo(x, y);
+  }
+  povCtx.lineTo(width, horizon);
+  povCtx.closePath();
+  povCtx.fill();
+
   povCtx.strokeStyle = "#e6c35c";
   povCtx.lineWidth = 2;
   povCtx.beginPath();
   povCtx.moveTo(0, horizon);
   povCtx.lineTo(width, horizon);
   povCtx.stroke();
+
+  povCtx.fillStyle = "rgba(230,195,92,0.1)";
+  povCtx.beginPath();
+  povCtx.moveTo(width * 0.42, height);
+  povCtx.lineTo(width * 0.49, horizon);
+  povCtx.lineTo(width * 0.53, horizon);
+  povCtx.lineTo(width * 0.68, height);
+  povCtx.closePath();
+  povCtx.fill();
+
   drawReticle(width, height);
   drawPovTelemetry(drone, width, height);
   overlay.innerHTML = "";
@@ -512,10 +570,10 @@ function renderHardware(drone, hits) {
   const status = modeCopy();
   const bvhMs = rayPath === "rtx" ? 1.4 + hits.length * 0.16 : 8.8 + hits.length * 0.7;
   const rows = [
-    ["BVH", rayPath === "rtx" ? "RTX ray cores" : "CPU parity", rayPath === "rtx" ? "good" : "watch"],
+    ["RTX BVH", rayPath === "rtx" ? "ray cores active" : "CPU parity view", rayPath === "rtx" ? "good" : "watch"],
     ["Query", `${hits.length} candidates · ${bvhMs.toFixed(1)} ms`, rayPath === "rtx" ? "good" : "watch"],
-    ["NPU Vision", status.npu, "local"],
-    ["SQLite", `${status.sync} outbound`, connectivityMode === "online" ? "good" : "local"],
+    ["Intel NPU", status.npu, "good"],
+    ["SQLite", `${status.sync} staged events`, "local"],
   ];
   document.querySelector("#hardware-list").innerHTML = rows
     .map(
@@ -525,7 +583,9 @@ function renderHardware(drone, hits) {
     .join("");
   document.querySelector("#bvh-label").textContent = rayPath === "rtx" ? "RTX ray cores" : "CPU parity";
   document.querySelector("#bvh-badge").textContent =
-    rayPath === "rtx" ? "RTX BVH local" : "CPU BVH parity";
+    rayPath === "rtx" ? "RTX BVH on laptop" : "CPU BVH parity";
+  document.querySelector("#map-hud-copy").textContent =
+    rayPath === "rtx" ? "RTX 5070 ray queries, local C2, staged Foundry export" : "CPU parity view, same offline C2 flow";
   document.querySelector("#range-label").textContent = `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`;
   document.querySelector("#pov-title").textContent = `${drone.callsign} POV`;
 }
@@ -547,7 +607,7 @@ function renderAlerts(drone, hits, scores) {
   } else if (scores[0][0] === "restricted volume in POV") {
     alerts.push(["critical", "Restricted volume visible in POV"]);
   }
-  if (connectivityMode === "offline") alerts.push(["watch", "External sync held locally"]);
+  alerts.push(["watch", "Offline authority active; Foundry export staged"]);
   if (drone.battery < 70) alerts.push(["watch", `${drone.callsign} battery near return threshold`]);
   if (alerts.length === 0) alerts.push(["watch", "Local BVH pass clear"]);
   document.querySelector("#alert-list").innerHTML = alerts
@@ -576,13 +636,10 @@ function renderCommandQueue() {
 function updateModeChrome() {
   const status = modeCopy();
   const pill = document.querySelector("#mode-status");
-  pill.textContent = connectivityMode.toUpperCase();
-  pill.className = `mode-pill ${connectivityMode}`;
+  pill.textContent = "OFFLINE FIELD NODE";
+  pill.className = "mode-pill offline";
   document.querySelector("#sync-count").textContent = String(status.sync);
   document.querySelector("#foundry-status").textContent = status.foundry;
-  document.querySelectorAll(".mode-btn").forEach((button) => {
-    button.classList.toggle("active", button.dataset.mode === connectivityMode);
-  });
 }
 
 function renderFrame() {
@@ -600,7 +657,7 @@ function renderFrame() {
   renderCommandQueue();
   updateModeChrome();
   document.querySelector("#clock-label").textContent = `T+${simTime.toFixed(1)}s`;
-  document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "Live";
+  document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "Local replay";
   document.querySelector("#field-condition-label").textContent = scores[0][0];
   document.querySelector("#npu-label").textContent = modeCopy().npu;
 }
@@ -621,22 +678,26 @@ function wrapAngle(angle) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
-document.querySelectorAll(".mode-btn").forEach((button) => {
-  button.addEventListener("click", () => {
-    connectivityMode = button.dataset.mode;
-    pushLog(`Connectivity switched to ${connectivityMode.toUpperCase()}.`);
-  });
-});
+function cycleSelected(offset) {
+  const assets = allAssets();
+  const current = Math.max(0, assets.findIndex((asset) => asset.id === selectedId));
+  const next = (current + offset + assets.length) % assets.length;
+  selectedId = assets[next].id;
+  pushLog(`POV switched to ${assets[next].callsign}.`);
+  renderFrame();
+}
 
 document.querySelector("#resume-mission").addEventListener("click", () => issueCommand("resume"));
 document.querySelector("#patrol-area").addEventListener("click", () => issueCommand("patrol"));
 document.querySelector("#return-home").addEventListener("click", () => issueCommand("return"));
 document.querySelector("#hold-position").addEventListener("click", () => issueCommand("hold"));
 document.querySelector("#emergency-stop").addEventListener("click", () => issueCommand("abort"));
+document.querySelector("#prev-frame").addEventListener("click", () => cycleSelected(-1));
+document.querySelector("#next-frame").addEventListener("click", () => cycleSelected(1));
 document.querySelector("#toggle-bvh").addEventListener("click", () => {
   rayPath = rayPath === "rtx" ? "cpu" : "rtx";
-  pushLog(`BVH path switched to ${rayPath === "rtx" ? "RTX ray cores" : "CPU parity"}.`);
+  pushLog(`BVH path switched to ${rayPath === "rtx" ? "RTX ray cores" : "CPU parity"} locally.`);
 });
 
-pushLog("Simulation started; local graphics and BVH engine active.");
+pushLog("Offline field node started; local graphics, BVH, NPU, and SQLite active.");
 requestAnimationFrame(tick);
