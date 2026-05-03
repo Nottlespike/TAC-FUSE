@@ -15,7 +15,7 @@ def test_alpha_test_pack_keeps_accelerator_contracts_explicit() -> None:
     metadata = task_pack["metadata"]
 
     assert metadata["rtx_pathing_required"] is True
-    assert metadata["edge_npu_zero_shot_required"] is True
+    assert metadata["strix_npu_zero_shot_required"] is True
     assert metadata["trained_model_ready"] is True
     assert metadata["playwright_visual_required"] is True
 
