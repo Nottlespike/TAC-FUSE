@@ -31,11 +31,15 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await page.goto(demoUrl);
   await page.waitForTimeout(900);
 
-  await expect(page.locator("#pov-title")).toContainText("POV Feed");
+  await expect(page.locator("#pov-title")).toContainText("3D Map Feed");
+  await expect(page.locator("#frame-counter")).toContainText("object map");
   await expect(page.locator("#mode-status")).toContainText("FUSION NODE AUTHORITY");
-  await expect(page.locator("#npu-label")).not.toContainText(/NPU|Intel/i);
+  await expect(page.locator("#npu-label")).toContainText("object pass");
+  await expect(page.locator("#npu-label")).not.toContainText(/Intel/i);
   await expect(page.locator("#asset-list .feed-latency").first()).toHaveText(/^\d{1,3} ms$/);
   await expect(page.locator("#asset-list")).not.toContainText(/\d+\.\d{2,}\s*ms/);
+  await expect(page.locator(".target-label").first()).toContainText(/%/);
+  await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();

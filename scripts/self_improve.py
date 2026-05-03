@@ -29,8 +29,16 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("disconnected_resilience", "Disconnected resilience"),
     ("drone_coordination", "Drone coordination"),
     ("sensor_fusion_alerting", "Sensor fusion and alerting"),
+    ("object_map_quantification", "3D object-map quantification"),
     ("power_latency_posture", "Power/latency posture"),
     ("enterprise_sync_boundary", "Enterprise sync boundary"),
+)
+
+WORKFLOW_ORDER: tuple[tuple[str, str], ...] = (
+    ("explore", "Explore"),
+    ("create", "Create"),
+    ("beautify", "Beautify"),
+    ("cleanup", "Cleanup"),
 )
 
 ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
@@ -66,6 +74,16 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "video",
         "alert",
         "prioritized",
+    ),
+    "object_map_quantification": (
+        "3d map",
+        "3d object map",
+        "object map",
+        "object pass",
+        "objects quantified",
+        "detector",
+        "detectionconfidence",
+        "range and altitude",
     ),
     "power_latency_posture": (
         "power",
@@ -147,6 +165,28 @@ INFERENCE_OWNED_PATHS = (
     "src/tac_fuse/npu_siglip.py",
     "tests/test_npu_siglip.py",
 )
+OBJECT_MAP_REQUIRED_TERMS: dict[str, tuple[str, ...]] = {
+    "web/app.js": (
+        "3d object map",
+        "projectpovmappoint",
+        "detectionconfidence",
+        "range and altitude labels",
+    ),
+    "web/index.html": (
+        "3d map feed",
+        "detector",
+        "object pass",
+    ),
+    "tests/visual/tac-fuse.spec.js": (
+        "3d map feed",
+        "target-label",
+        "object pass",
+    ),
+}
+POV_TERRAIN_DRIFT_TERMS = (
+    "drawpovlocalterrain",
+    "drawpovcorridor",
+)
 
 
 @dataclass(frozen=True)
@@ -193,6 +233,7 @@ class TaskBlueprint:
 
     name: str
     priority: str
+    phase: str
     title: str
     focus: str
     body: str
@@ -289,6 +330,49 @@ def _inference_centrality_findings(root: Path, path: Path, text: str) -> list[Fi
     return findings
 
 
+def _object_map_findings(root: Path, path: Path, text: str) -> list[Finding]:
+    relative_path = _relative(path, root)
+    required_terms = OBJECT_MAP_REQUIRED_TERMS.get(relative_path)
+    if not required_terms:
+        return []
+
+    findings: list[Finding] = []
+    normalised = _normalise(text)
+    missing = [term for term in required_terms if term not in normalised]
+    if missing:
+        findings.append(
+            Finding(
+                code="object-map-quantification-drift",
+                severity="P1",
+                path=relative_path,
+                message=(
+                    "3D object-map quantification guard is missing terms: "
+                    + ", ".join(missing)
+                ),
+                focus="object_map_quantification",
+            )
+        )
+
+    if relative_path == "web/app.js":
+        for term in POV_TERRAIN_DRIFT_TERMS:
+            if term in normalised:
+                findings.append(
+                    Finding(
+                        code="pov-terrain-camera-drift",
+                        severity="P1",
+                        path=relative_path,
+                        message=(
+                            "Operator POV drifted back toward a forward terrain/corridor "
+                            "camera; keep it as a 3D object map with quantifiable tracks."
+                        ),
+                        focus="object_map_quantification",
+                    )
+                )
+                break
+
+    return findings
+
+
 def audit_alignment(root: Path | None = None) -> AlignmentAudit:
     root = (root or project_root()).resolve()
     audit = AlignmentAudit(root=root)
@@ -368,10 +452,15 @@ def audit_alignment(root: Path | None = None) -> AlignmentAudit:
 
     for path in iter_text_files(root):
         relative_path = _relative(path, root)
-        if relative_path not in CRITICAL_SURFACES and not relative_path.startswith("docs/"):
+        if (
+            relative_path not in CRITICAL_SURFACES
+            and not relative_path.startswith("docs/")
+            and relative_path not in OBJECT_MAP_REQUIRED_TERMS
+        ):
             continue
         text = _read_text(path)
         audit.findings.extend(_inference_centrality_findings(root, path, text))
+        audit.findings.extend(_object_map_findings(root, path, text))
         audit.files_scanned += 1
 
     return audit
@@ -417,6 +506,7 @@ def default_backlog() -> list[TaskBlueprint]:
         TaskBlueprint(
             name="tac-fuse-p0-local-c2-state-first",
             priority="P0",
+            phase="explore",
             title="Make local C2 state writes the first-class proof path",
             focus="local_c2_authority",
             body=(
@@ -433,6 +523,7 @@ def default_backlog() -> list[TaskBlueprint]:
         TaskBlueprint(
             name="tac-fuse-p0-denied-link-swarm-control",
             priority="P0",
+            phase="create",
             title="Prove a single operator can control the swarm while denied",
             focus="drone_coordination",
             body=(
@@ -449,6 +540,7 @@ def default_backlog() -> list[TaskBlueprint]:
         TaskBlueprint(
             name="tac-fuse-p1-local-alert-prioritization",
             priority="P1",
+            phase="create",
             title="Turn local sensor and geometry events into prioritized alerts",
             focus="sensor_fusion_alerting",
             body=(
@@ -464,8 +556,27 @@ def default_backlog() -> list[TaskBlueprint]:
             ),
         ),
         TaskBlueprint(
+            name="tac-fuse-p1-3d-object-map-quantification",
+            priority="P1",
+            phase="beautify",
+            title="Keep the operator surface on 3D object-map quantification",
+            focus="object_map_quantification",
+            body=(
+                "Maintain the selected-feed surface as a 3D local object map with "
+                "detector-visible objects, class labels, confidence, range, and altitude "
+                "quantification. Do not regress to a forward terrain/corridor camera. "
+                "NPU or MPU detection can be represented as a supporting object pass, "
+                "but local C2 continuity remains the product thesis."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && uv run python scripts/self_improve.py "
+                "audit --skip-ruff --fail-on-findings && npm run test:visual"
+            ),
+        ),
+        TaskBlueprint(
             name="tac-fuse-p1-enterprise-sync-boundary",
             priority="P1",
+            phase="create",
             title="Keep Maven and Foundry behind a deferred sync boundary",
             focus="enterprise_sync_boundary",
             body=(
@@ -482,6 +593,7 @@ def default_backlog() -> list[TaskBlueprint]:
         TaskBlueprint(
             name="tac-fuse-p2-power-latency-posture",
             priority="P2",
+            phase="beautify",
             title="Make laptop/backpack power and latency constraints visible",
             focus="power_latency_posture",
             body=(
@@ -498,6 +610,7 @@ def default_backlog() -> list[TaskBlueprint]:
         TaskBlueprint(
             name="tac-fuse-p2-accelerator-supporting-role",
             priority="P2",
+            phase="cleanup",
             title="Keep NPU, MPU, GPU, and RTX paths in a supporting role",
             focus="local_c2_authority",
             body=(
@@ -518,13 +631,22 @@ def _prompt_for_blueprint(blueprint: TaskBlueprint) -> str:
     priority_text = "\n".join(
         f"{index}. {label}" for index, (_key, label) in enumerate(PRIORITY_ORDER, start=1)
     )
+    workflow_text = "\n".join(
+        f"{index}. {label}" for index, (_key, label) in enumerate(WORKFLOW_ORDER, start=1)
+    )
+    workflow_labels = dict(WORKFLOW_ORDER)
     return f"""IMPORTANT - TAC-FUSE targets {PROBLEM_STATEMENT}.
 
 Working directory: AlphaHENG repo root.
 Scope: {TASK_SCOPE}
 
+Workflow:
+{workflow_text}
+
 Priority order:
 {priority_text}
+
+Current stage: {workflow_labels[blueprint.phase]}
 
 Task: {blueprint.title}
 
@@ -532,6 +654,8 @@ Task: {blueprint.title}
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
+- If object detection is shown, render quantifiable objects on a local 3D map rather than
+  a forward terrain/corridor camera.
 - Core behavior must remain offline-testable and must not require Foundry, Maven, OpenVINO,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
 - If you touch behavior, add or update focused offline tests.
@@ -551,19 +675,40 @@ def task_from_blueprint(blueprint: TaskBlueprint) -> dict[str, Any]:
         "metadata": {
             "generated_by": GENERATED_BY,
             "problem_statement": PROBLEM_STATEMENT,
+            "workflow_stage": blueprint.phase,
             "alignment_focus": blueprint.focus,
         },
     }
+
+
+def _phase_for_finding(finding: Finding) -> str:
+    if finding.focus == "object_map_quantification":
+        return "beautify"
+    if finding.code in {"inference-centrality", "pov-terrain-camera-drift"}:
+        return "cleanup"
+    if finding.code.startswith("missing"):
+        return "explore"
+    return "create"
 
 
 def task_from_finding(finding: Finding) -> dict[str, Any]:
     suffix = finding.code.replace("_", "-")
     path_slug = finding.path.replace("/", "-").replace(".", "-").strip("-")
     name = f"tac-fuse-align-{suffix}-{path_slug}"[:96]
+    phase = _phase_for_finding(finding)
+    workflow_text = "\n".join(
+        f"{index}. {label}" for index, (_key, label) in enumerate(WORKFLOW_ORDER, start=1)
+    )
+    workflow_labels = dict(WORKFLOW_ORDER)
     prompt = f"""IMPORTANT - TAC-FUSE targets {PROBLEM_STATEMENT}.
 
 Working directory: AlphaHENG repo root.
 Scope: {TASK_SCOPE}
+
+Workflow:
+{workflow_text}
+
+Current stage: {workflow_labels[phase]}
 
 Fix this alignment finding:
 {finding.label()}
@@ -573,6 +718,8 @@ Accelerator, MPU/NPU/GPU/RTX, and object-detection language must remain optional
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
+- If object detection is shown, render quantifiable objects on a local 3D map rather than
+  a forward terrain/corridor camera.
 - Core behavior must remain offline-testable and must not require Foundry, Maven, OpenVINO,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
 
@@ -592,6 +739,7 @@ contrib/TAC-FUSE/CHANGELOG.md.
         "metadata": {
             "generated_by": GENERATED_BY,
             "problem_statement": PROBLEM_STATEMENT,
+            "workflow_stage": phase,
             "alignment_focus": finding.focus,
             "finding_code": finding.code,
             "finding_path": finding.path,
@@ -637,6 +785,7 @@ def build_task_pack(
             "generated_at": datetime.now(UTC).isoformat(),
             "problem_statement": PROBLEM_STATEMENT,
             "scope": TASK_SCOPE,
+            "workflow_order": [label for _key, label in WORKFLOW_ORDER],
             "priority_order": [label for _key, label in PRIORITY_ORDER],
             "alignment_findings": len(audit.findings),
         },

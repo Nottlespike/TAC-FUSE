@@ -142,6 +142,91 @@ let spoolDepth = 0;         // offline spool buffer depth
 let syncWatermark = 0;      // timestamp of last staged sync
 let syncStaged = false;     // whether a packet is staged for gate
 
+// Power posture state — mirrors tac_fuse.power_posture
+let powerSource = "battery";        // battery | backpack_generator | ac_mains
+let laptopBattery = 100.0;          // fusion node battery 0-100
+let cpuLoad = 35.0;                 // estimated CPU load 0-100
+const BATTERY_DRAIN_RATE = 100 / 180; // ~0.56%/min
+let currentPosture = null;          // Current power posture snapshot
+
+// Workload registry matching power_posture.py WORKLOAD_REGISTRY
+const WORKLOAD_CLASSES = {
+  local_c2: "safe_offline",
+  sensor_fusion: "safe_offline",
+  alerting: "safe_offline",
+  fusion_spool: "safe_offline",
+  collision_bvh: "safe_offline",
+  drone_tasking: "safe_offline",
+  foundry_export: "safe_offline",
+  sensor_emulation: "safe_degraded",
+  terrain_mesh: "safe_degraded",
+  earth_aoi_cache: "safe_degraded",
+  enterprise_sync: "requires_online",
+};
+
+function computePosture() {
+  // Compute tier
+  let tier;
+  const hotThreshold = 85;
+  const reducedBattery = 40;
+  const minimalBattery = 15;
+
+  if (powerSource === "ac_mains") {
+    tier = cpuLoad >= hotThreshold ? "reduced" : "full";
+  } else if (powerSource === "backpack_generator") {
+    tier = cpuLoad >= hotThreshold ? "reduced"
+      : laptopBattery < minimalBattery ? "minimal" : "full";
+  } else {
+    tier = laptopBattery < minimalBattery ? "minimal"
+      : laptopBattery < reducedBattery ? "reduced"
+      : cpuLoad >= hotThreshold ? "reduced" : "full";
+  }
+
+  // Thermal headroom
+  const thermal = cpuLoad >= hotThreshold ? "hot" : cpuLoad >= 60 ? "warm" : "nominal";
+
+  // Runtime estimate
+  let runtimeMin;
+  if (powerSource === "ac_mains") runtimeMin = Infinity;
+  else if (powerSource === "backpack_generator") runtimeMin = 360;
+  else runtimeMin = laptopBattery > 0 ? laptopBattery / BATTERY_DRAIN_RATE : 0;
+
+  // Classify workloads
+  const safe = [];
+  const restricted = [];
+  for (const [name, cls] of Object.entries(WORKLOAD_CLASSES)) {
+    let isSafe = false;
+    if (cls === "safe_offline") {
+      isSafe = tier !== "minimal" || ["local_c2", "fusion_spool", "alerting"].includes(name);
+    } else if (cls === "safe_degraded") {
+      isSafe = tier === "full";
+    } else if (cls === "requires_online") {
+      isSafe = connectivityMode === "online" && tier !== "minimal";
+    }
+    if (isSafe) safe.push(name);
+    else restricted.push(name);
+  }
+
+  // Notes
+  const notes = [];
+  if (powerSource === "battery") {
+    if (runtimeMin < 30) notes.push({ text: `BATTERY CRITICAL: ~${Math.round(runtimeMin)} min — switch to backpack or AC`, level: "critical" });
+    else if (runtimeMin < 60) notes.push({ text: `BATTERY LOW: ~${Math.round(runtimeMin)} min remaining`, level: "warn" });
+    else notes.push({ text: `Battery: ~${Math.round(runtimeMin)} min estimated runtime`, level: "" });
+  } else if (powerSource === "backpack_generator") {
+    notes.push({ text: "Backpack generator active — extended runtime", level: "" });
+  } else {
+    notes.push({ text: "AC mains — no runtime constraint", level: "" });
+  }
+  if (tier === "minimal") notes.push({ text: "MINIMAL: only C2, spool, alerting active", level: "critical" });
+  else if (tier === "reduced") notes.push({ text: "REDUCED: heavy batch workloads paused", level: "warn" });
+  if (thermal === "hot") notes.push({ text: "Thermal throttle: CPU load elevated", level: "warn" });
+  if (connectivityMode === "offline") notes.push({ text: "OFFLINE: enterprise sync blocked, local C2 is authority", level: "" });
+  else if (connectivityMode === "degraded") notes.push({ text: "DEGRADED: sync queued, awaiting connectivity", level: "" });
+
+  return { tier, thermal, runtimeMin, safe, restricted, notes };
+}
+
 const CONNECTIVITY_LABELS = {
   offline: "FUSION NODE AUTHORITY",
   degraded: "LOCAL C2 ACTIVE",
@@ -252,6 +337,15 @@ function stepSimulation(dt) {
     feed.confidence = Math.max(0.3, Math.min(0.99, feed.confidence + (Math.random() - 0.5) * 0.03));
     feed.latency = Math.max(20, Math.min(300, feed.latency + (Math.random() - 0.5) * 10));
   }
+
+  // Laptop battery drain (simulates fusion node power consumption)
+  if (powerSource === "battery") {
+    laptopBattery = Math.max(0, laptopBattery - BATTERY_DRAIN_RATE * dt);
+  } else if (powerSource === "backpack_generator") {
+    laptopBattery = Math.min(100, laptopBattery + dt * 0.5); // slow trickle charge
+  }
+  // CPU load fluctuates with workload
+  cpuLoad = clamp(cpuLoad + (Math.random() - 0.48) * 2.5, 15, 98);
 
   for (const feed of feeds) {
     feed.battery = Math.max(35, feed.battery - dt * 0.018);
@@ -410,56 +504,68 @@ function modeCopy() {
   return {
     sync: stagedCommands.length,
     watermark: syncWatermark,
-    npu: "fusion-local",
+    sensor: "object pass",
   };
 }
 
 function classifyFrame(feed, visible) {
+  const objectCount = visible.length;
+  const airCount = visible.filter((obj) => obj.type !== "ground").length;
+  const avgConfidence = objectCount
+    ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / objectCount
+    : 0;
   if (visible.some((obj) => obj.threat === "critical")) {
     return [
-      ["restricted volume in view", 0.92],
-      ["dense multi-feed formation", 0.49],
-      ["clear corridor", 0.06],
+      ["restricted object quantified", 0.92],
+      ["objects quantified", Math.max(0.48, avgConfidence)],
+      ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
     ];
   }
   if (feed.battery < 70) {
     return [
-      ["low power return corridor", 0.84],
-      ["clear corridor", 0.33],
-      ["low altitude clutter", 0.12],
+      ["low power track quantified", 0.84],
+      ["objects quantified", Math.max(0.45, avgConfidence)],
+      ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
     ];
   }
   return [
-    ["clear corridor", 0.88],
-    ["dense multi-feed formation", 0.31],
-    ["reduced visibility field conditions", 0.11],
+    ["objects quantified", Math.max(0.55, avgConfidence)],
+    ["air tracks detected", clamp(airCount / Math.max(1, feeds.length), 0.16, 0.98)],
+    ["range and altitude labels", objectCount ? 0.91 : 0.12],
   ];
 }
 
 function visibleObjects(feed) {
   const objects = [];
-  const fov = Math.PI * 0.78;
-  const heading = (feed.heading * Math.PI) / 180;
+  const detectionRangeM = 650;
   for (const target of allFeeds()) {
     if (target.id === feed.id) continue;
     const dx = target.x - feed.x;
     const dy = target.y - feed.y;
     const distance = Math.hypot(dx, dy);
-    if (distance > 520) continue;
+    if (distance > detectionRangeM) continue;
     const angle = Math.atan2(dy, dx);
+    const heading = (feed.heading * Math.PI) / 180;
     const delta = wrapAngle(angle - heading);
-    if (Math.abs(delta) > fov / 2) continue;
+    const threat = bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
+      ? "critical"
+      : "watch";
+    const detectionConfidence = clamp(
+      target.confidence * 0.62 + target.freshness * 0.24 + (target.type === "ground" ? 0.08 : 0.12) - distance / 2600,
+      0.45,
+      0.98,
+    );
     objects.push({
       ...target,
       range: Math.round(distance),
-      screenX: 0.5 + delta / fov,
-      screenY: clamp(0.56 + (distance / 520) * 0.22 - (target.z - feed.z) / 260, 0.14, 0.88),
-      threat: bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
-        ? "critical"
-        : "watch",
+      bearingDeg: Math.round(((delta * 180) / Math.PI + 360) % 360),
+      altitudeDelta: Math.round(target.z - feed.z),
+      className: detectionClass(target),
+      detectionConfidence,
+      threat,
     });
   }
-  return objects;
+  return objects.sort((a, b) => a.range - b.range);
 }
 
 function resizeCanvas(canvas) {
@@ -750,166 +856,288 @@ function drawPov(feed, visible) {
   resizeCanvas(povCanvas);
   const width = povCanvas.width;
   const height = povCanvas.height;
-  const horizon = Math.floor(height * 0.42);
-
-  const sky = povCtx.createLinearGradient(0, 0, 0, horizon);
-  sky.addColorStop(0, "#101923");
-  sky.addColorStop(1, "#263e4a");
-  povCtx.fillStyle = sky;
-  povCtx.fillRect(0, 0, width, horizon);
-
-  drawPovLocalTerrain(feed, width, height, horizon);
-
-  povCtx.fillStyle = "rgba(45, 66, 57, 0.72)";
-  povCtx.beginPath();
-  povCtx.moveTo(0, horizon);
-  for (let i = 0; i <= 8; i += 1) {
-    const x = (i / 8) * width;
-    const y = horizon - Math.sin(i * 1.7 + feed.x * 0.01) * 22 - 30;
-    povCtx.lineTo(x, y);
-  }
-  povCtx.lineTo(width, horizon);
-  povCtx.closePath();
-  povCtx.fill();
-
-  drawPovCorridor(width, height, horizon);
-  drawReticle(width, height);
-  drawPovTelemetry(feed, width, height);
-  overlay.innerHTML = "";
-
-  for (const obj of visible) {
-    const x = obj.screenX * width;
-    const y = obj.screenY * height;
-    const radius = obj.type === "ground" ? 9 : 14;
-    povCtx.fillStyle = obj.threat === "critical" ? "#ff5d5d" : "#55d6a6";
-    povCtx.strokeStyle = "#f2efe5";
-    povCtx.lineWidth = 2;
-    povCtx.beginPath();
-    if (obj.type === "ground") {
-      povCtx.rect(x - radius, y - radius / 2, radius * 2, radius);
-    } else {
-      povCtx.moveTo(x, y - radius);
-      povCtx.lineTo(x + radius * 1.4, y + radius);
-      povCtx.lineTo(x - radius * 1.4, y + radius);
-      povCtx.closePath();
-    }
-    povCtx.fill();
-    povCtx.stroke();
-
-    const label = document.createElement("div");
-    label.className = "target-label";
-    label.style.left = `${x}px`;
-    label.style.top = `${y}px`;
-    label.textContent = `${obj.callsign} ${obj.range}m`;
-    overlay.appendChild(label);
-  }
+  drawPovMapBackground(width, height);
+  drawPov3DGrid(feed, width, height);
+  drawPovHazards(feed, width, height);
+  drawPovDetectionFrustum(feed, width, height);
+  drawPovObjects(feed, visible, width, height);
+  drawPovTelemetry(feed, visible, width, height);
+  drawPovQuantificationPanel(visible, width, height);
 }
 
-function drawPovLocalTerrain(feed, width, height, horizon) {
-  const terrain = povCtx.createLinearGradient(0, horizon, 0, height);
-  terrain.addColorStop(0, "#253d34");
-  terrain.addColorStop(0.52, "#1c2b22");
-  terrain.addColorStop(1, "#0e1411");
-  povCtx.fillStyle = terrain;
-  povCtx.fillRect(0, horizon, width, height - horizon);
+function detectionClass(asset) {
+  if (asset.type === "ground") return "ground team";
+  if (asset.type === "fixed-wing") return "fixed wing";
+  return "quadrotor";
+}
 
-  const vanishingX = width * 0.5 + Math.sin((feed.heading * Math.PI) / 180) * width * 0.12;
-  const motion = simTime * 0.28 + feed.y * 0.004;
+function mapProjectionScale(width, height) {
+  return Math.min(width, height) / 975;
+}
+
+function projectPovMapPoint(feed, point, width, height, zRelativeM = 0) {
+  const scale = mapProjectionScale(width, height);
+  const dx = point.x - feed.x;
+  const dy = point.y - feed.y;
+  return {
+    x: width * 0.5 + (dx - dy) * scale * 0.66,
+    y: height * 0.57 + (dx + dy) * scale * 0.34 - zRelativeM * 0.42,
+  };
+}
+
+function drawPovMapBackground(width, height) {
+  const bg = povCtx.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, "#101923");
+  bg.addColorStop(0.58, "#111b1d");
+  bg.addColorStop(1, "#090d0f");
+  povCtx.fillStyle = bg;
+  povCtx.fillRect(0, 0, width, height);
+
+  const glow = povCtx.createRadialGradient(width * 0.5, height * 0.48, 20, width * 0.5, height * 0.48, width * 0.72);
+  glow.addColorStop(0, "rgba(85, 214, 166, 0.13)");
+  glow.addColorStop(0.5, "rgba(121, 184, 255, 0.06)");
+  glow.addColorStop(1, "rgba(9, 13, 15, 0)");
+  povCtx.fillStyle = glow;
+  povCtx.fillRect(0, 0, width, height);
+}
+
+function drawPov3DGrid(feed, width, height) {
+  const extent = 720;
+  const step = 120;
 
   povCtx.save();
-  povCtx.strokeStyle = "rgba(245, 241, 232, 0.16)";
   povCtx.lineWidth = 1;
-  for (let i = 1; i <= 8; i += 1) {
-    const t = i / 8;
-    const y = horizon + (height - horizon) * t ** 1.75;
-    const offset = Math.sin(motion + i * 0.8) * 10;
+  for (let offset = -extent; offset <= extent; offset += step) {
+    const major = offset % 240 === 0;
+    povCtx.strokeStyle = major ? "rgba(245, 241, 232, 0.2)" : "rgba(245, 241, 232, 0.1)";
+
     povCtx.beginPath();
-    povCtx.moveTo(0, y + offset);
-    povCtx.lineTo(width, y - offset * 0.5);
+    for (let u = -extent; u <= extent; u += step / 2) {
+      const point = { x: feed.x + u, y: feed.y + offset };
+      const projected = projectPovMapPoint(
+        feed,
+        point,
+        width,
+        height,
+        terrainHeightAt(point.x, point.y) - feed.z,
+      );
+      if (u === -extent) povCtx.moveTo(projected.x, projected.y);
+      else povCtx.lineTo(projected.x, projected.y);
+    }
     povCtx.stroke();
-  }
 
-  for (let x = -width * 0.25; x <= width * 1.25; x += width / 8) {
     povCtx.beginPath();
-    povCtx.moveTo(vanishingX, horizon + 10);
-    povCtx.lineTo(x + Math.sin(motion + x * 0.01) * 18, height);
-    povCtx.stroke();
-  }
-
-  for (const hazard of hazards) {
-    const dx = hazard.x - feed.x;
-    const dy = hazard.y - feed.y;
-    const distance = Math.hypot(dx, dy);
-    if (distance > 520) continue;
-
-    const bearing = Math.atan2(dy, dx) - (feed.heading * Math.PI) / 180;
-    const x = width * (0.5 + Math.sin(bearing) * 0.42);
-    const y = horizon + (distance / 520) * (height - horizon) * 0.8;
-    const radius = Math.max(20, ((520 - distance) / 520) * 90);
-    const critical = hazard.severity === "critical";
-    povCtx.fillStyle = critical ? "rgba(255, 93, 93, 0.14)" : "rgba(230, 195, 92, 0.12)";
-    povCtx.strokeStyle = critical ? "rgba(255, 93, 93, 0.48)" : "rgba(230, 195, 92, 0.42)";
-    povCtx.beginPath();
-    povCtx.ellipse(x, y, radius * 1.5, radius * 0.38, 0, 0, Math.PI * 2);
-    povCtx.fill();
+    for (let v = -extent; v <= extent; v += step / 2) {
+      const point = { x: feed.x + offset, y: feed.y + v };
+      const projected = projectPovMapPoint(
+        feed,
+        point,
+        width,
+        height,
+        terrainHeightAt(point.x, point.y) - feed.z,
+      );
+      if (v === -extent) povCtx.moveTo(projected.x, projected.y);
+      else povCtx.lineTo(projected.x, projected.y);
+    }
     povCtx.stroke();
   }
   povCtx.restore();
 }
 
-function drawPovCorridor(width, height, horizon) {
-  const vanishY = horizon + 12;
-  povCtx.fillStyle = "rgba(230,195,92,0.12)";
+function drawPovHazards(feed, width, height) {
+  const scale = mapProjectionScale(width, height);
+  for (const hazard of hazards) {
+    const distance = Math.hypot(hazard.x - feed.x, hazard.y - feed.y);
+    if (distance > 780) continue;
+    const projected = projectPovMapPoint(
+      feed,
+      hazard,
+      width,
+      height,
+      terrainHeightAt(hazard.x, hazard.y) - feed.z,
+    );
+    const critical = hazard.severity === "critical";
+    povCtx.save();
+    povCtx.fillStyle = critical ? "rgba(255, 93, 93, 0.12)" : "rgba(230, 195, 92, 0.12)";
+    povCtx.strokeStyle = critical ? "rgba(255, 93, 93, 0.56)" : "rgba(230, 195, 92, 0.48)";
+    povCtx.lineWidth = 2;
+    povCtx.beginPath();
+    povCtx.ellipse(projected.x, projected.y, hazard.r * scale * 0.82, hazard.r * scale * 0.38, 0, 0, Math.PI * 2);
+    povCtx.fill();
+    povCtx.stroke();
+    povCtx.fillStyle = "#f5f1e8";
+    povCtx.font = "12px Inter, Arial";
+    povCtx.fillText(hazard.label, projected.x + 10, projected.y - 8);
+    povCtx.restore();
+  }
+}
+
+function drawPovDetectionFrustum(feed, width, height) {
+  const origin = projectPovMapPoint(feed, feed, width, height, 0);
+  const heading = (feed.heading * Math.PI) / 180;
+  const range = 560;
+  const left = {
+    x: feed.x + Math.cos(heading - 0.55) * range,
+    y: feed.y + Math.sin(heading - 0.55) * range,
+  };
+  const right = {
+    x: feed.x + Math.cos(heading + 0.55) * range,
+    y: feed.y + Math.sin(heading + 0.55) * range,
+  };
+  const leftProjected = projectPovMapPoint(feed, left, width, height, -feed.z * 0.35);
+  const rightProjected = projectPovMapPoint(feed, right, width, height, -feed.z * 0.35);
+
+  povCtx.save();
+  povCtx.fillStyle = "rgba(85, 214, 166, 0.08)";
+  povCtx.strokeStyle = "rgba(85, 214, 166, 0.34)";
+  povCtx.lineWidth = 1.5;
   povCtx.beginPath();
-  povCtx.moveTo(width * 0.34, height);
-  povCtx.lineTo(width * 0.47, vanishY);
-  povCtx.lineTo(width * 0.53, vanishY);
-  povCtx.lineTo(width * 0.68, height);
+  povCtx.moveTo(origin.x, origin.y);
+  povCtx.lineTo(leftProjected.x, leftProjected.y);
+  povCtx.lineTo(rightProjected.x, rightProjected.y);
   povCtx.closePath();
   povCtx.fill();
-
-  povCtx.strokeStyle = "rgba(230,195,92,0.72)";
-  povCtx.lineWidth = 2;
-  povCtx.beginPath();
-  povCtx.moveTo(width * 0.34, height);
-  povCtx.lineTo(width * 0.47, vanishY);
-  povCtx.moveTo(width * 0.68, height);
-  povCtx.lineTo(width * 0.53, vanishY);
-  povCtx.moveTo(0, horizon);
-  povCtx.lineTo(width, horizon);
   povCtx.stroke();
-
-  povCtx.strokeStyle = "rgba(230,195,92,0.3)";
-  povCtx.setLineDash([8, 10]);
-  povCtx.beginPath();
-  povCtx.moveTo(width * 0.5, height);
-  povCtx.lineTo(width * 0.5, vanishY);
-  povCtx.stroke();
-  povCtx.setLineDash([]);
+  povCtx.restore();
 }
 
-function drawReticle(width, height) {
-  povCtx.strokeStyle = "rgba(242, 239, 229, 0.55)";
-  povCtx.lineWidth = 1;
-  povCtx.beginPath();
-  povCtx.moveTo(width / 2 - 42, height / 2);
-  povCtx.lineTo(width / 2 + 42, height / 2);
-  povCtx.moveTo(width / 2, height / 2 - 42);
-  povCtx.lineTo(width / 2, height / 2 + 42);
-  povCtx.stroke();
-  povCtx.beginPath();
-  povCtx.arc(width / 2, height / 2, 52, 0, Math.PI * 2);
-  povCtx.stroke();
+function drawPovObjects(feed, visible, width, height) {
+  overlay.innerHTML = "";
+  const selected = {
+    ...feed,
+    range: 0,
+    bearingDeg: 0,
+    altitudeDelta: 0,
+    className: "selected node",
+    detectionConfidence: 1,
+    threat: "watch",
+  };
+  const mapObjects = [selected, ...visible];
+  const sorted = mapObjects
+    .map((obj) => ({
+      ...obj,
+      ground: projectPovMapPoint(
+        feed,
+        obj,
+        width,
+        height,
+        terrainHeightAt(obj.x, obj.y) - feed.z,
+      ),
+      air: projectPovMapPoint(feed, obj, width, height, obj.z - feed.z),
+    }))
+    .sort((a, b) => a.ground.y - b.ground.y);
+
+  for (const obj of sorted) {
+    drawPovObjectMarker(obj);
+    if (obj.id !== feed.id) {
+      addDetectionLabel(obj, width, height);
+    }
+  }
 }
 
-function drawPovTelemetry(feed, width, height) {
+function drawPovObjectMarker(obj) {
+  const color = obj.id === selectedId ? "#f5f1e8" : colors[obj.key] || "#55d6a6";
+  const markerRadius = obj.type === "ground" ? 8 : 11;
+  const critical = obj.threat === "critical";
+
+  povCtx.save();
+  povCtx.strokeStyle = critical ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
+  povCtx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  povCtx.lineWidth = 1.5;
+  povCtx.beginPath();
+  povCtx.ellipse(obj.ground.x, obj.ground.y, markerRadius * 1.7, markerRadius * 0.6, 0, 0, Math.PI * 2);
+  povCtx.fill();
+
+  povCtx.strokeStyle = "rgba(245, 241, 232, 0.28)";
+  povCtx.beginPath();
+  povCtx.moveTo(obj.ground.x, obj.ground.y);
+  povCtx.lineTo(obj.air.x, obj.air.y);
+  povCtx.stroke();
+
+  povCtx.fillStyle = color;
+  povCtx.strokeStyle = critical ? "#ff5d5d" : "#f5f1e8";
+  povCtx.lineWidth = critical ? 3 : 2;
+  povCtx.beginPath();
+  if (obj.type === "ground") {
+    povCtx.rect(obj.air.x - markerRadius, obj.air.y - markerRadius / 2, markerRadius * 2, markerRadius);
+  } else if (obj.type === "fixed-wing") {
+    povCtx.moveTo(obj.air.x, obj.air.y - markerRadius);
+    povCtx.lineTo(obj.air.x + markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
+    povCtx.lineTo(obj.air.x, obj.air.y + markerRadius * 0.25);
+    povCtx.lineTo(obj.air.x - markerRadius * 1.8, obj.air.y + markerRadius * 0.8);
+    povCtx.closePath();
+  } else {
+    povCtx.arc(obj.air.x, obj.air.y, markerRadius, 0, Math.PI * 2);
+  }
+  povCtx.fill();
+  povCtx.stroke();
+
+  if (obj.id !== selectedId) {
+    const boxW = obj.type === "ground" ? 42 : 54;
+    const boxH = obj.type === "ground" ? 24 : 34;
+    povCtx.strokeStyle = critical ? "rgba(255, 93, 93, 0.9)" : "rgba(85, 214, 166, 0.86)";
+    povCtx.setLineDash([7, 5]);
+    povCtx.strokeRect(obj.air.x - boxW / 2, obj.air.y - boxH / 2, boxW, boxH);
+    povCtx.setLineDash([]);
+  }
+  povCtx.restore();
+}
+
+function addDetectionLabel(obj, width, height) {
+  const label = document.createElement("div");
+  label.className = `target-label ${obj.threat}`;
+  label.style.left = `${clamp(obj.air.x, 10, width - 190)}px`;
+  label.style.top = `${clamp(obj.air.y, 28, height - 62)}px`;
+
+  const title = document.createElement("strong");
+  title.textContent = `${obj.className} ${Math.round(obj.detectionConfidence * 100)}%`;
+  const details = document.createElement("span");
+  details.textContent = `${obj.callsign} · ${obj.range} m · delta ${obj.altitudeDelta} m`;
+  label.append(title, details);
+  overlay.appendChild(label);
+}
+
+function drawPovTelemetry(feed, visible, width, height) {
   povCtx.fillStyle = "rgba(10, 15, 18, 0.62)";
-  povCtx.fillRect(18, 18, 230, 72);
+  povCtx.fillRect(18, 18, 260, 78);
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
-  povCtx.fillText(`${feed.callsign} ${feed.command.toUpperCase()}`, 32, 42);
-  povCtx.fillText(`HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${formatMeters(feed.z)}`, 32, 66);
-  povCtx.fillText(`SPD ${Math.round(feed.speed)} m/s  BAT ${Math.round(feed.battery)}%`, 32, 88);
+  povCtx.fillText(`${feed.callsign} 3D OBJECT MAP`, 32, 42);
+  povCtx.fillText(`CUE ${visible.length}  HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${formatMeters(feed.z)}`, 32, 66);
+  povCtx.fillText(`SPD ${Math.round(feed.speed)} m/s  BAT ${Math.round(feed.battery)}%`, 32, 90);
+}
+
+function drawPovQuantificationPanel(visible, width, height) {
+  const avgConfidence = visible.length
+    ? visible.reduce((sum, obj) => sum + obj.detectionConfidence, 0) / visible.length
+    : 0;
+  const airTracks = visible.filter((obj) => obj.type !== "ground").length;
+  const panelWidth = 228;
+  const x = width - panelWidth - 18;
+  const y = 18;
+  povCtx.save();
+  povCtx.fillStyle = "rgba(8, 13, 15, 0.68)";
+  povCtx.strokeStyle = "rgba(85, 214, 166, 0.36)";
+  povCtx.lineWidth = 1;
+  povCtx.beginPath();
+  povCtx.roundRect(x, y, panelWidth, 82, 8);
+  povCtx.fill();
+  povCtx.stroke();
+
+  povCtx.fillStyle = "#55d6a6";
+  povCtx.font = "12px Inter, Arial";
+  povCtx.fillText("OBJECT PASS", x + 14, y + 24);
+  povCtx.fillStyle = "#f5f1e8";
+  povCtx.font = "20px Inter, Arial";
+  povCtx.fillText(`${visible.length} quantified`, x + 14, y + 50);
+  povCtx.fillStyle = "rgba(245, 241, 232, 0.72)";
+  povCtx.font = "12px Inter, Arial";
+  povCtx.fillText(
+    `${airTracks} air tracks · ${Math.round(avgConfidence * 100)}% avg confidence`,
+    x + 14,
+    y + 70,
+  );
+  povCtx.restore();
 }
 
 function renderFeeds() {
@@ -1000,7 +1228,7 @@ function renderHardware(feed, hits) {
       : "Terrain from procedural estimate; awaiting cache",
   );
   setText("#range-label", `${Math.round(Math.max(0, ...hits.map((hit) => hit.distance)))} m`);
-  setText("#pov-title", `${feed.callsign} POV Feed`);
+  setText("#pov-title", `${feed.callsign} 3D Map Feed`);
 }
 
 function renderVision(scores) {
@@ -1090,9 +1318,11 @@ function renderFrame() {
   renderAlerts(feed, hits, scores);
   renderMissionLog();
   updateModeChrome();
-  document.querySelector("#frame-counter").textContent = simPaused ? "Paused" : "One feed within fused multi-source view";
+  document.querySelector("#frame-counter").textContent = simPaused
+    ? "Paused"
+    : "3D local object map with detector object quantification";
   document.querySelector("#field-condition-label").textContent = scores[0][0];
-  document.querySelector("#npu-label").textContent = modeCopy().npu;
+  document.querySelector("#npu-label").textContent = modeCopy().sensor;
 }
 
 function tick(now) {
@@ -1121,6 +1351,12 @@ function cycleSelected(offset) {
 }
 
 function triggerSync() {
+  // Hard boundary: even if button is somehow clicked, enforce the gate
+  if (connectivityMode !== "online") {
+    pushLog(`SYNC BLOCKED: ${connectivityMode.toUpperCase()} mode — enterprise sync requires ONLINE.`);
+    document.querySelector("#sync-status").textContent = `SYNC BLOCKED: ${connectivityMode.toUpperCase()} mode prevents enterprise upload`;
+    return;
+  }
   if (stagedCommands.length === 0) {
     pushLog("No staged commands to sync.");
     return;

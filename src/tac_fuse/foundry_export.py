@@ -4,6 +4,9 @@ LOCAL C2 STATE-FIRST GUARANTEE:
 All export functions read from MissionStateStore, which persists operator commands
 to local SQLite state, audit log, and outbound sync queue BEFORE any export path
 can run. Exports are deterministic, offline artifacts derived from persisted state.
+
+These functions are READ-ONLY and never trigger network I/O. They produce local
+artifacts that can be handed off to enterprise systems via operator-gated sync.
 """
 
 from __future__ import annotations
@@ -23,6 +26,9 @@ ARTIFACT_NAMES = (
     "alerts.jsonl",
     "sync_manifest.json",
 )
+
+# Valid operation types that represent a completed state-first command.
+_COMMAND_OPS = frozenset({"create", "update", "cancel", "retask"})
 
 
 def build_foundry_export(store: MissionStateStore) -> dict[str, Any]:
@@ -83,3 +89,67 @@ def write_foundry_artifacts(store: MissionStateStore, output_dir: str | Path) ->
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in rows))
+
+
+def verify_export_readiness(store: MissionStateStore) -> dict[str, Any]:
+    """Verify every operator task in the store has complete state-first proofs.
+
+    Returns a readiness report with per-task and aggregate proof status.
+    This is the export gate: callers SHOULD check readiness before including
+    state in enterprise-bound artifacts.
+    """
+    tasks = store.list_tasks()
+    task_proofs: list[dict[str, Any]] = []
+    all_complete = True
+    proven = 0
+    unproven = 0
+
+    for task in tasks:
+        proof = store.verify_state_first("operator_task", task["id"])
+        entry = {
+            "task_id": task["id"],
+            "title": task["title"],
+            "status": task["status"],
+            "proof_complete": proof["proof_complete"],
+        }
+        task_proofs.append(entry)
+        if proof["proof_complete"]:
+            proven += 1
+        else:
+            all_complete = False
+            unproven += 1
+
+    return {
+        "ready": all_complete,
+        "total_tasks": len(tasks),
+        "proven": proven,
+        "unproven": unproven,
+        "tasks": task_proofs,
+    }
+
+
+def verify_sync_queue_command_integrity(store: MissionStateStore) -> dict[str, Any]:
+    """Verify every sync queue entry originates from a valid command operation.
+
+    Returns an integrity report flagging any non-command operations (which could
+    indicate data that was not produced through the operator tasking path).
+    """
+    entries = store.list_sync_queue()
+    valid = []
+    invalid = []
+
+    for entry in entries:
+        if entry["operation"] in _COMMAND_OPS:
+            valid.append(entry["id"])
+        else:
+            invalid.append({
+                "id": entry["id"],
+                "entity_type": entry["entity_type"],
+                "operation": entry["operation"],
+            })
+
+    return {
+        "integrity_ok": len(invalid) == 0,
+        "valid_command_ops": len(valid),
+        "non_command_ops": invalid,
+    }

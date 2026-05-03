@@ -5,6 +5,12 @@ from tac_fuse.connectivity import (
     ConnectivityMode,
     create_connectivity_controller,
 )
+from tac_fuse.foundry import (
+    SyncBoundaryViolation,
+    assert_sync_allowed,
+    can_upload,
+    has_upload_credentials,
+)
 from tac_fuse.foundry_export import (
     build_foundry_export,
     write_foundry_artifacts,
@@ -25,6 +31,15 @@ from tac_fuse.pov import (
     generate_pov_sequence,
     project_tracks_to_pov,
     render_svg_pov,
+)
+from tac_fuse.power_posture import (
+    WORKLOAD_REGISTRY,
+    ComputeTier,
+    PowerPosture,
+    PowerPostureConfig,
+    PowerPostureManager,
+    PowerSource,
+    WorkloadClass,
 )
 from tac_fuse.ray_query import (
     BVHPrimitive,
@@ -47,6 +62,7 @@ from tac_fuse.replay import (
 __all__ = [
     "AssetTrack",
     "BVHPrimitive",
+    "ComputeTier",
     "ConnectivityController",
     "ConnectivityMode",
     "DronePOVFrame",
@@ -58,12 +74,21 @@ __all__ = [
     "MissionStateStore",
     "NPUStatus",
     "POVObject",
+    "PowerPosture",
+    "PowerPostureConfig",
+    "PowerPostureManager",
+    "PowerSource",
     "RayQueryResult",
     "RayQueryStatus",
     "RestrictedEntry",
     "RouteConflict",
     "SeededReplayEngine",
+    "SyncBoundaryViolation",
+    "WORKLOAD_REGISTRY",
+    "WorkloadClass",
+    "assert_sync_allowed",
     "build_foundry_export",
+    "can_upload",
     "create_connectivity_controller",
     "demo_conflicts",
     "demo_restricted_entries",
@@ -71,6 +96,7 @@ __all__ = [
     "evaluate_bvh",
     "generate_pov_sequence",
     "generate_scenario",
+    "has_upload_credentials",
     "inspect_ray_runtime",
     "project_tracks_to_pov",
     "render_svg_pov",

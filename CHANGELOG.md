@@ -45,8 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite for the offline fusion spool (29 tests) covering schema init, WAL mode, event append/idempotency, JSONL health stats, corruption-tolerant reads, snapshot intervals, watermarks, receipt tracking, pending events, replay-to-target, redacted inspection, concurrent reads, and custom timestamps/keys.
 
 ### Changed
+- Replaced the selected-feed forward terrain/corridor POV with a 3D local object
+  map that labels detected assets by class, confidence, range, and altitude delta.
+- Extended the TAC-FUSE self-improvement audit to guard the 3D object-map
+  quantification concept against regression back to terrain-camera rendering.
+- Added explicit Explore/Create/Beautify/Cleanup workflow stages to generated
+  self-improvement tasks, with demo polish treated as a first-class phase.
+- Polished the browser demo top bar and 3D object map with non-wrapping mode
+  controls, glass detection labels, and an object-pass quantification panel.
 - Formatted contributor-feed latency and POV telemetry as human-readable values
-  and replaced the stretched world-raster POV with a local terrain/corridor view.
+  and removed the stretched world-raster POV.
 - Preserved default Maven/Foundry OAuth scopes when no scope override is set.
 - Made sensor emulator RNG derivation stable across Python processes and cleaned
   lint issues across current source/tests.
@@ -57,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wired the browser theater to use the cached Earth imagery layer when present, with procedural terrain retained as the offline fallback.
 - Reframed BVH copy as collision prevention and route optimization, with ray-tracing cores shown as the acceleration path for local spatial queries.
 - Restyled the web demo UI as a laptop-local fusion node with contributor feeds (freshness/confidence/latency), selected feed as POV, feed quality panel, staged packet panel, sync watermark, and operator-gated upload button.
+- **Deferred sync boundary tightened**: `foundry_export` reclassified from `REQUIRES_ONLINE` to `SAFE_OFFLINE` in `power_posture.py` because exports read from local persisted state and work in any connectivity mode. Only `enterprise_sync` (actual upload) requires ONLINE mode.
+- Added test `test_power_posture_classifies_export_as_safe_offline()` verifying workload classification.
+- Added test `test_upload_requires_both_online_mode_and_credentials()` verifying the unified upload gate requires both ONLINE mode AND valid credentials.
+- **Reframed UI and demo scripts to position accelerators as optional supporting capabilities**: Changed "Detector"/"Object pass" metrics to "Sensor Cue"/"Local cue pass"; updated POV labels from "3D OBJECT MAP"/"DET" to "3D FUSION MAP"/"CUE"; made RTX prerequisite check optional in demo sequence; removed mandatory RTX validation from quick-start and demo bootstrap.
 
 ### Removed
 - Removed the single-file TAC-FUSE hackathon playbook from the repo surface.

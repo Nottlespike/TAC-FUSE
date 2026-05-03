@@ -94,6 +94,13 @@ def test_generated_tasks_are_problem_statement_2_scoped() -> None:
         assert task["validation_lane"] == "software"
         assert self_improve.PROBLEM_STATEMENT in task["prompt"]
         assert "Intel NPU availability" in task["prompt"]
+        assert "Workflow:" in task["prompt"]
+        assert task["metadata"]["workflow_stage"] in {
+            "explore",
+            "create",
+            "beautify",
+            "cleanup",
+        }
         assert task["verify_command"].startswith("cd contrib/TAC-FUSE &&")
 
 
@@ -107,6 +114,25 @@ def test_task_pack_yaml_contains_priority_order() -> None:
         "Disconnected resilience",
         "Drone coordination",
         "Sensor fusion and alerting",
+        "3D object-map quantification",
         "Power/latency posture",
         "Enterprise sync boundary",
     ]
+    assert parsed["metadata"]["workflow_order"] == [
+        "Explore",
+        "Create",
+        "Beautify",
+        "Cleanup",
+    ]
+
+
+def test_object_map_task_is_beautify_stage() -> None:
+    task_pack = self_improve.build_task_pack(max_tasks=4)
+    object_map_task = next(
+        task
+        for task in task_pack["tasks"]
+        if task["metadata"]["alignment_focus"] == "object_map_quantification"
+    )
+
+    assert object_map_task["metadata"]["workflow_stage"] == "beautify"
+    assert "Current stage: Beautify" in object_map_task["prompt"]

@@ -207,7 +207,7 @@ class IngestBus:
                 pass  # non-ISO timestamp — skip staleness check
 
         # Sequence tracking
-        key = event.source
+        key = f"{event.source}:{event.source_id}"
         expected = self._seq_counters.get(key, 0) + 1
         if event.seq > 0 and event.seq < expected:
             exc = IngestRejection(

@@ -28,8 +28,8 @@ body {
 
 .topbar {
     display: grid;
-    grid-template-columns: minmax(220px, 0.8fr) minmax(240px, 1.1fr) minmax(420px, 1.3fr) minmax(260px, 0.9fr);
-    gap: 18px;
+    grid-template-columns: minmax(280px, 0.95fr) minmax(230px, 0.82fr) minmax(300px, 1fr) minmax(220px, 0.75fr);
+    gap: 14px;
     align-items: center;
     min-height: 54px;
     padding: 0 16px;
@@ -50,6 +50,8 @@ body {
 .brand strong {
     font-size: 18px;
     letter-spacing: 0.02em;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .connectivity-switcher {
@@ -279,6 +281,12 @@ body {
     font-size: 11px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.mode-pill {
+    min-width: 150px;
+    text-align: center;
 }
 
 .mode-pill.offline {
@@ -392,6 +400,7 @@ h2 {
 
 .pov-shell {
     min-height: 320px;
+    box-shadow: inset 0 0 0 1px rgba(121, 184, 255, 0.08), 0 18px 60px rgba(0, 0, 0, 0.24);
 }
 
 canvas {
@@ -447,12 +456,35 @@ canvas {
 .target-label {
     position: absolute;
     transform: translate(14px, -10px);
-    padding: 4px 7px;
+    display: grid;
+    gap: 2px;
+    min-width: 138px;
+    padding: 5px 7px;
     border-radius: 5px;
-    background: rgba(7, 11, 13, 0.74);
+    border: 1px solid rgba(85, 214, 166, 0.48);
+    background: rgba(7, 11, 13, 0.8);
     color: var(--text);
-    font-size: 12px;
+    font-size: 11px;
     white-space: nowrap;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+}
+
+.target-label strong {
+    color: var(--accent);
+    font-size: 11px;
+}
+
+.target-label span {
+    color: var(--muted);
+}
+
+.target-label.critical {
+    border-color: rgba(255, 93, 93, 0.62);
+}
+
+.target-label.critical strong {
+    color: var(--danger);
 }
 
 .earth-footer {
@@ -655,6 +687,144 @@ canvas {
     display: grid;
     grid-template-columns: 64px 1fr;
     gap: 8px;
+}
+
+/* Power Posture panel */
+
+.posture-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.posture-controls {
+    display: flex;
+    gap: 4px;
+}
+
+.power-btn {
+    flex: 1;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #23323a;
+    color: var(--muted);
+    padding: 4px 6px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.power-btn:hover {
+    background: #2e404a;
+    color: var(--text);
+}
+
+.power-btn.active[data-source="battery"] {
+    background: #14251f;
+    color: var(--accent);
+    border-color: #2a6e57;
+}
+
+.power-btn.active[data-source="backpack_generator"] {
+    background: #1c2b3f;
+    color: var(--blue);
+    border-color: #3a5a80;
+}
+
+.power-btn.active[data-source="ac_mains"] {
+    background: #17382b;
+    color: var(--accent);
+    border-color: #2a6e57;
+}
+
+.posture-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.posture-metric {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-2);
+    padding: 6px 8px;
+    font-size: 12px;
+}
+
+.posture-metric .bar-track {
+    min-width: 40px;
+}
+
+.posture-metric strong {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tier-label.full {
+    color: var(--accent);
+}
+
+.tier-label.reduced {
+    color: var(--warn);
+}
+
+.tier-label.minimal {
+    color: var(--danger);
+}
+
+.posture-workloads {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.workload-tag {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+.workload-tag.safe {
+    background: #17382b;
+    color: var(--accent);
+    border-color: #2a6e57;
+}
+
+.workload-tag.restricted {
+    background: #321b1e;
+    color: var(--danger);
+    border-color: #784247;
+    opacity: 0.7;
+    text-decoration: line-through;
+}
+
+.posture-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.posture-note {
+    padding: 2px 0;
+}
+
+.posture-note.critical {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.posture-note.warn {
+    color: var(--warn);
 }
 
 @media (max-width: 1200px) {

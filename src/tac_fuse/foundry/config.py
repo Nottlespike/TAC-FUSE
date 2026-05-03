@@ -357,3 +357,66 @@ def can_upload(
     if not sync_allowed:
         return False
     return has_upload_credentials(config)
+
+
+class SyncBoundaryViolation(RuntimeError):
+    """Raised when code attempts to cross the deferred sync boundary.
+
+    This is the hard gate: any code path that tries to upload to Foundry/Maven
+    **must** call :func:`assert_sync_allowed` first.  The exception makes it
+    impossible to silently bypass the boundary — a failed gate is always a
+    loud, testable failure.
+
+    Missing Foundry or Maven configuration must never block local operator C2.
+    Local exports (``foundry_export``) are always allowed because they read
+    from persisted local state and produce offline artifacts.
+    """
+
+
+def assert_sync_allowed(
+    config: MavenFoundryConfig | None,
+    *,
+    sync_allowed: bool,
+) -> None:
+    """Hard gate that raises :class:`SyncBoundaryViolation` when upload is blocked.
+
+    Every code path that attempts an upload to Foundry or Maven **must** call
+    this function before performing any network I/O.  The function raises
+    instead of returning a bool so that a boundary violation is always
+    immediately visible and testable.
+
+    This function never performs I/O and is safe to call from any code path.
+
+    Args:
+        config: Loaded Maven/Foundry config (may be ``None``).
+        sync_allowed: ``True`` when the connectivity controller reports
+            ONLINE mode (``controller.is_external_sync_allowed()``).
+
+    Raises:
+        SyncBoundaryViolation: when the upload gate is closed.
+    """
+    if not sync_allowed:
+        raise SyncBoundaryViolation(
+            "Upload blocked: connectivity is not ONLINE. "
+            "Exports can be created from local state while disconnected, "
+            "but uploads must be gated by ONLINE mode."
+        )
+    if not has_upload_credentials(config):
+        if config is None:
+            raise SyncBoundaryViolation(
+                "Upload blocked: no Maven/Foundry configuration present. "
+                "Missing Foundry or Maven configuration must never block "
+                "local operator C2 — exports work from local state."
+            )
+        conn = config.connection
+        if not conn.hostname:
+            raise SyncBoundaryViolation(
+                "Upload blocked: Foundry hostname is empty in config. "
+                "Local C2 and exports remain fully operational."
+            )
+        raise SyncBoundaryViolation(
+            "Upload blocked: Foundry/Maven credentials incomplete. "
+            "Provide a personal access token (FOUNDRY_TOKEN) or complete "
+            "OAuth credentials (OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, "
+            "OAUTH_TOKEN_URL). Local C2 and exports remain fully operational."
+        )

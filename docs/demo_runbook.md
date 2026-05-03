@@ -114,17 +114,17 @@ Run with: `bash docs/check_rtx_prereqs.sh` (or `uv run bash` if on a system with
 ### 3.1 Phase 0 — Environment Bootstrap (0–2 min)
 
 ```bash
-# 1. Validate prerequisites
-bash docs/check_rtx_prereqs.sh
-
-# 2. Install / sync
+# 1. Install / sync
 uv sync --extra dev
 
-# 3. Run full offline test suite
+# 2. Run full offline test suite
 uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
 
-# 4. Lint check
+# 3. Lint check
 uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
+
+# 4. Optional: validate RTX availability (only if GPU acceleration is desired)
+bash docs/check_rtx_prereqs.sh || echo "RTX not available — CPU fallback will be used"
 ```
 
 ### 3.2 Phase 1 — Core State Initialization (2–3 min)
@@ -441,7 +441,8 @@ Each proof point is a discrete claim that can be verified live during the demo.
 uv sync --extra dev
 uv run pytest -q
 uv run ruff check src tests
-bash docs/check_rtx_prereqs.sh
+# Optional: check RTX if using GPU acceleration
+bash docs/check_rtx_prereqs.sh || echo "RTX not available — demo continues on CPU fallback"
 
 # Python demo loop
 uv run python - << 'EOF'

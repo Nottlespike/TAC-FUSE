@@ -210,7 +210,7 @@ class PowerPostureManager:
         # Battery: both battery level and thermal matter
         if self._battery_pct < self.config.battery_minimal_threshold:
             return ComputeTier.MINIMAL
-        if self._battery_pct < self.config.battery_reduced_threshold:
+        if self._battery_pct <= self.config.battery_reduced_threshold:
             return ComputeTier.REDUCED
         if self._cpu_load_pct >= self.config.cpu_load_warm_threshold:
             return ComputeTier.REDUCED

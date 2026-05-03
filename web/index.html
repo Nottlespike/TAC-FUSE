@@ -64,8 +64,8 @@
         <section class="operator-pane">
             <div class="section-heading">
                 <div>
-                    <h1 id="pov-title">Alpha Feed</h1>
-                    <span class="subtle" id="frame-counter">One feed within fused multi-source view</span>
+                    <h1 id="pov-title">Alpha 3D Map Feed</h1>
+                    <span class="subtle" id="frame-counter">Quantified object map from fused contributor feeds</span>
                 </div>
                 <div class="frame-controls">
                     <button id="prev-frame" class="icon-btn" title="Previous feed">‹</button>
@@ -100,12 +100,12 @@
                         <strong id="bvh-label">Geometry</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Vision</span>
-                        <strong id="field-condition-label">Clear corridor</strong>
+                        <span class="metric-label">Objects</span>
+                        <strong id="field-condition-label">objects quantified</strong>
                     </div>
                     <div>
-                        <span class="metric-label">Fusion</span>
-                        <strong id="npu-label">Local</strong>
+                        <span class="metric-label">Detector</span>
+                        <strong id="npu-label">object pass</strong>
                     </div>
                 </div>
             </div>
@@ -122,6 +122,41 @@
                 <section class="panel">
                     <h2>Fusion Node Status</h2>
                     <div id="hardware-list" class="status-list"></div>
+                </section>
+                <section class="panel">
+                    <h2>Power Posture</h2>
+                    <div class="posture-panel">
+                        <div class="posture-controls">
+                            <button id="power-battery" data-source="battery" class="power-btn active" title="Laptop battery power">Battery</button>
+                            <button id="power-backpack" data-source="backpack_generator" class="power-btn" title="Backpack generator active">Backpack</button>
+                            <button id="power-ac" data-source="ac_mains" class="power-btn" title="AC mains power">AC Mains</button>
+                        </div>
+                        <div class="posture-metrics">
+                            <div class="posture-metric">
+                                <span class="metric-label">Battery</span>
+                                <div class="bar-track"><span id="posture-battery-bar" class="bar-fill" style="width:100%"></span></div>
+                                <strong id="posture-battery-pct">100%</strong>
+                            </div>
+                            <div class="posture-metric">
+                                <span class="metric-label">Runtime</span>
+                                <strong id="posture-runtime">180 min</strong>
+                            </div>
+                            <div class="posture-metric">
+                                <span class="metric-label">Compute</span>
+                                <strong id="posture-tier" class="tier-label full">FULL</strong>
+                            </div>
+                            <div class="posture-metric">
+                                <span class="metric-label">Thermal</span>
+                                <strong id="posture-thermal">nominal</strong>
+                            </div>
+                            <div class="posture-metric">
+                                <span class="metric-label">Fallback</span>
+                                <strong id="posture-fallback">CPU</strong>
+                            </div>
+                        </div>
+                        <div id="posture-workloads" class="posture-workloads"></div>
+                        <div id="posture-notes" class="posture-notes"></div>
+                    </div>
                 </section>
                 <section class="panel">
                     <h2>Alerts</h2>

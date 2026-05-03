@@ -1,7 +1,11 @@
+import pytest
+
 from tac_fuse.connectivity import ConnectivityMode, create_connectivity_controller
 from tac_fuse.foundry.config import (
     FoundryConnectionConfig,
     MavenFoundryConfig,
+    SyncBoundaryViolation,
+    assert_sync_allowed,
     can_upload,
     has_upload_credentials,
 )
@@ -151,3 +155,179 @@ def test_missing_foundry_config_never_blocks_local_c2() -> None:
     event_types = [e["event_type"] for e in audit]
     assert "task_created" in event_types
     assert "alert_created" in event_types
+
+
+def test_power_posture_classifies_export_as_safe_offline() -> None:
+    """Prove foundry_export is classified as SAFE_OFFLINE in power posture.
+
+    This is critical: exports must be available in any connectivity mode
+    because they read from local persisted state. Only enterprise_sync
+    (actual upload) requires ONLINE connectivity.
+    """
+    from tac_fuse.power_posture import WORKLOAD_REGISTRY, WorkloadClass
+
+    # foundry_export must be SAFE_OFFLINE
+    assert WORKLOAD_REGISTRY.get("foundry_export") == WorkloadClass.SAFE_OFFLINE
+
+    # enterprise_sync requires ONLINE
+    assert WORKLOAD_REGISTRY.get("enterprise_sync") == WorkloadClass.REQUIRES_ONLINE
+
+    # Verify all core C2 workloads are SAFE_OFFLINE
+    for workload in ["local_c2", "sensor_fusion", "alerting", "fusion_spool", "drone_tasking"]:
+        assert WORKLOAD_REGISTRY.get(workload) == WorkloadClass.SAFE_OFFLINE
+
+
+def test_upload_requires_both_online_mode_and_credentials() -> None:
+    """Prove the unified upload gate requires both conditions.
+
+    This is the critical sync boundary: uploads must be blocked when:
+    - Connectivity is OFFLINE or DEGRADED (even with valid credentials)
+    - Credentials are missing (even in ONLINE mode)
+    """
+    from tac_fuse.foundry.config import FoundryConnectionConfig, MavenFoundryConfig
+
+    # Build valid config with credentials
+    cfg = MavenFoundryConfig(
+        connection=FoundryConnectionConfig(hostname="https://h", token="pat-valid"),
+        ontology_name="maven",
+        mission_dataset_rid="ri-ds-1",
+        events_dataset_rid="ri-ds-2",
+        media_set_rid="ri-ms-1",
+    )
+
+    # ONLINE + credentials = allowed
+    assert can_upload(cfg, sync_allowed=True) is True
+
+    # OFFLINE + credentials = blocked
+    assert can_upload(cfg, sync_allowed=False) is False
+
+    # DEGRADED + credentials = blocked
+    assert can_upload(cfg, sync_allowed=False) is False
+
+    # ONLINE + no config = blocked
+    assert can_upload(None, sync_allowed=True) is False
+
+    # OFFLINE + no config = blocked
+    assert can_upload(None, sync_allowed=False) is False
+
+    # Config without credentials = blocked
+    no_auth_cfg = MavenFoundryConfig(
+        connection=FoundryConnectionConfig(hostname="https://h", token=""),
+        ontology_name="maven",
+        mission_dataset_rid="ri-ds-1",
+        events_dataset_rid="ri-ds-2",
+        media_set_rid="ri-ms-1",
+    )
+    assert can_upload(no_auth_cfg, sync_allowed=True) is False
+
+
+# ── assert_sync_allowed hard gate tests ──────────────────────────────────────
+
+
+def test_assert_sync_allowed_passes_when_online_with_credentials() -> None:
+    """Hard gate passes silently when both ONLINE and credentials present."""
+    cfg = _make_foundry_config()
+    # Should not raise
+    assert_sync_allowed(cfg, sync_allowed=True)
+
+
+def test_assert_sync_allowed_raises_offline() -> None:
+    """Hard gate raises SyncBoundaryViolation in OFFLINE mode."""
+    cfg = _make_foundry_config()
+    try:
+        assert_sync_allowed(cfg, sync_allowed=False)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "not ONLINE" in str(exc)
+        assert "Exports" in str(exc)
+
+
+def test_assert_sync_allowed_raises_degraded() -> None:
+    """Hard gate raises SyncBoundaryViolation in DEGRADED mode."""
+    cfg = _make_foundry_config()
+    try:
+        assert_sync_allowed(cfg, sync_allowed=False)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "not ONLINE" in str(exc)
+
+
+def test_assert_sync_allowed_raises_no_config() -> None:
+    """Hard gate raises SyncBoundaryViolation when no Foundry config exists."""
+    try:
+        assert_sync_allowed(None, sync_allowed=True)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "no Maven/Foundry configuration" in str(exc)
+        assert "local operator C2" in str(exc)
+
+
+def test_assert_sync_allowed_raises_empty_hostname() -> None:
+    """Hard gate raises SyncBoundaryViolation when hostname is empty."""
+    cfg = MavenFoundryConfig(
+        connection=FoundryConnectionConfig(hostname="", token="pat-fake"),
+        ontology_name="maven",
+        mission_dataset_rid="ri-ds-1",
+        events_dataset_rid="ri-ds-2",
+        media_set_rid="ri-ms-1",
+    )
+    try:
+        assert_sync_allowed(cfg, sync_allowed=True)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "hostname" in str(exc)
+
+
+def test_assert_sync_allowed_raises_no_credentials() -> None:
+    """Hard gate raises SyncBoundaryViolation when credentials are missing."""
+    cfg = MavenFoundryConfig(
+        connection=FoundryConnectionConfig(hostname="https://h", token=""),
+        ontology_name="maven",
+        mission_dataset_rid="ri-ds-1",
+        events_dataset_rid="ri-ds-2",
+        media_set_rid="ri-ms-1",
+    )
+    try:
+        assert_sync_allowed(cfg, sync_allowed=True)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "credentials" in str(exc)
+
+
+def test_assert_sync_allowed_offline_precedence_over_no_config() -> None:
+    """When both offline and no config, offline reason takes precedence."""
+    try:
+        assert_sync_allowed(None, sync_allowed=False)
+        raise AssertionError("Expected SyncBoundaryViolation")
+    except SyncBoundaryViolation as exc:
+        assert "not ONLINE" in str(exc)
+
+
+def test_export_always_works_regardless_of_sync_boundary() -> None:
+    """Exports are never blocked by the sync boundary — they read local state."""
+    store = MissionStateStore()
+    controller = create_connectivity_controller(store)
+
+    # OFFLINE with no Foundry config — sync boundary is closed
+    controller.set_manual_override(ConnectivityMode.OFFLINE)
+    with pytest.raises(SyncBoundaryViolation):
+        assert_sync_allowed(None, sync_allowed=controller.is_external_sync_allowed())
+
+    # But export works fine — reads from local state, no network needed
+    store.create_task(title="Air-gapped export test")
+    export = build_foundry_export(store)
+    assert len(export["operator_tasks"]) == 1
+    assert export["operator_tasks"][0]["title"] == "Air-gapped export test"
+
+    # DEGRADED too — sync blocked but export works
+    controller.set_manual_override(ConnectivityMode.DEGRADED)
+    with pytest.raises(SyncBoundaryViolation):
+        assert_sync_allowed(None, sync_allowed=controller.is_external_sync_allowed())
+    store.create_task(title="Degraded export test")
+    export = build_foundry_export(store)
+    assert len(export["operator_tasks"]) == 2
+
+
+def test_sync_boundary_violation_is_runtime_error() -> None:
+    """SyncBoundaryViolation is a RuntimeError so it's not caught by accident."""
+    assert issubclass(SyncBoundaryViolation, RuntimeError)

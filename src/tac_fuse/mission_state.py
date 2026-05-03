@@ -190,6 +190,129 @@ class MissionStateStore:
             self._audit("task_cancelled", "operator_task", task_id, f"Cancelled task {task_id}")
         return updated
 
+    def retask(
+        self,
+        task_id: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Retask an existing operator task — modifies it in place while keeping it active.
+
+        This is a first-class retasking action: persists state, audit log, and sync queue
+        BEFORE any enterprise export can run.
+
+        Args:
+            task_id: The task to retask.
+            title: New title (optional).
+            description: New description (optional).
+            status: New status (defaults to "pending" to retask from any non-cancelled state).
+            metadata: New metadata merged with existing. None for no change.
+
+        Returns:
+            The updated task record.
+
+        Raises:
+            KeyError: If the task does not exist.
+            ValueError: If the task is cancelled (cannot retask a cancelled task).
+        """
+        current = self.get_task(task_id)
+        if current is None:
+            raise KeyError(task_id)
+        if current["status"] == "cancelled":
+            raise ValueError(f"Cannot retask cancelled task {task_id}")
+
+        now = self._utc_now()
+        updated = {
+            **current,
+            "updated_at": now,
+        }
+        if title is not None:
+            updated["title"] = title
+        if description is not None:
+            updated["description"] = description
+        if status is not None:
+            updated["status"] = status
+        else:
+            # Default to pending when retasking from in_progress/complete
+            updated["status"] = "pending"
+        if metadata is not None:
+            existing = dict(current.get("metadata") or {})
+            existing.update(metadata)
+            updated["metadata"] = existing
+
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE operator_tasks
+                SET title = ?, description = ?, status = ?, metadata = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    updated["title"],
+                    updated["description"],
+                    updated["status"],
+                    json.dumps(updated["metadata"], sort_keys=True),
+                    updated["updated_at"],
+                    task_id,
+                ),
+            )
+            self._enqueue_sync("operator_task", task_id, "retask", updated)
+            self._audit(
+                "task_retasked",
+                "operator_task",
+                task_id,
+                f"Retasked {task_id} to {updated['title']}",
+            )
+        return updated
+
+    def dispatch_command(
+        self,
+        command: str,
+        *,
+        asset_id: str = "",
+        title: str = "",
+        description: str = "",
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Dispatch an operator C2 command, persisting to state, audit log, and sync queue.
+
+        This is the authoritative entry point for all tasking/retasking actions.
+        Every call guarantees local-first persistence before any export path can run.
+
+        Supported commands: patrol, hold, return, resume, abort, scout, relay,
+            overwatch, and any freeform string.
+
+        Args:
+            command: The command string (e.g., "patrol", "hold", "return", "abort").
+            asset_id: Target asset identifier for logging.
+            title: Override for the created task title (auto-generated if empty).
+            description: Override for the task description (auto-generated if empty).
+            metadata: Additional metadata to attach to the task.
+
+        Returns:
+            The persisted task record.
+        """
+        meta = dict(metadata or {})
+        meta["command"] = command
+        if asset_id:
+            meta["asset_id"] = asset_id
+
+        auto_title = title or f"C2 command: {command}"
+        auto_desc = description or f"Operator issued {command} command" + (
+            f" for asset {asset_id}" if asset_id else ""
+        )
+
+        task = self.create_task(
+            title=auto_title,
+            description=auto_desc,
+            status="in_progress" if command != "abort" else "pending",
+            metadata=meta,
+        )
+        return task
+
     def insert_tracks(self, tracks: Iterable[Any]) -> int:
         track_payloads = [self._object_payload(track) for track in tracks]
         now = self._utc_now()
@@ -458,6 +581,50 @@ class MissionStateStore:
     def list_audit_events(self) -> list[dict[str, Any]]:
         rows = self._conn.execute("SELECT * FROM audit_log ORDER BY created_at").fetchall()
         return [dict(row) for row in rows]
+
+    def state_proof_summary(self) -> dict[str, Any]:
+        """Return an aggregate proof summary for all entity types in the store.
+
+        For each entity type, counts how many entities have complete state-first
+        proofs (persisted + audit + sync). This gives operators a single view of
+        C2 state integrity before any export or sync action.
+
+        Returns:
+            A dict mapping entity types to proof counts, plus an overall summary.
+        """
+        summaries: dict[str, dict[str, int]] = {}
+
+        for entity_type, table, id_col in [
+            ("operator_task", "operator_tasks", "id"),
+            ("alert", "alerts", "id"),
+            ("restricted_entry", "restricted_entries", "id"),
+            ("route_conflict", "route_conflicts", "id"),
+            ("asset_state", "asset_states", "asset_id"),
+        ]:
+            rows = self._conn.execute(
+                f"SELECT {id_col} AS eid FROM {table}"
+            ).fetchall()
+            total = len(rows)
+            proven = 0
+
+            for row in rows:
+                eid = row["eid"]
+                check = self.verify_state_first(entity_type, str(eid))
+                if check["proof_complete"]:
+                    proven += 1
+
+            summaries[entity_type] = {"total": total, "proven": proven}
+
+        audit_total = self._conn.execute("SELECT COUNT(*) AS c FROM audit_log").fetchone()["c"]
+        sync_pending = self._conn.execute(
+            "SELECT COUNT(*) AS c FROM sync_queue WHERE status = 'pending'"
+        ).fetchone()["c"]
+
+        return {
+            "entities": summaries,
+            "total_audit_events": int(audit_total),
+            "pending_sync_items": int(sync_pending),
+        }
 
     def pending_sync_count(self) -> int:
         row = self._conn.execute(
