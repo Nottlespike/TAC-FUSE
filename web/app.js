@@ -472,6 +472,15 @@ function allFeeds() {
   return [...feeds, groundTeam];
 }
 
+function knownFriendlyFor(asset) {
+  const id = asset?.targetId || asset?.id;
+  return allFeeds().find((item) => item.id === id) || null;
+}
+
+function isKnownFriendly(asset) {
+  return Boolean(knownFriendlyFor(asset));
+}
+
 function detectableObjects() {
   return [...allFeeds(), ...sceneClassTargets];
 }
@@ -1065,6 +1074,8 @@ function upsertFusedTrack(feed, observation) {
     className: observation.className,
     confidence: observation.detectionConfidence,
     threat: observation.threat,
+    affiliation: observation.affiliation,
+    identityKnown: observation.identityKnown,
     sources: new Set(),
     history: [],
   };
@@ -1082,6 +1093,8 @@ function upsertFusedTrack(feed, observation) {
   track.className = observation.className;
   track.confidence = Math.max(track.confidence * 0.72, observation.detectionConfidence);
   track.threat = observation.threat === "critical" ? "critical" : track.threat;
+  track.affiliation = observation.affiliation;
+  track.identityKnown = observation.identityKnown;
   track.lastSeen = simTime;
   track.sources.add(feed.callsign);
   track.history.unshift({
@@ -1148,6 +1161,8 @@ function fusedTrackObjects(feed) {
       altitudeDelta: Math.round(track.z - feed.z),
       detectionConfidence: clamp(track.confidence - age * 0.012, 0.38, 0.98),
       threat: track.threat,
+      affiliation: track.affiliation,
+      identityKnown: track.identityKnown,
       trackAge: age,
       trackStatus: directObj ? "live" : "memory",
       trackSources: sourceNames.length ? sourceNames : track.history.slice(0, 3).map((item) => item.source),
@@ -1191,15 +1206,22 @@ function detectObjectsForFeed(feed) {
     const angle = Math.atan2(dy, dx);
     const heading = (feed.heading * Math.PI) / 180;
     const delta = wrapAngle(angle - heading);
-    const unknownInCorridor = target.type.startsWith("unknown") && distanceToRouteGuard(target) <= ROUTE_GUARD_HALF_WIDTH_M + 24;
-    const threat = unknownInCorridor || bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
+    const friendly = isKnownFriendly(target);
+    const unknownInCorridor = !friendly
+      && target.type.startsWith("unknown")
+      && distanceToRouteGuard(target) <= ROUTE_GUARD_HALF_WIDTH_M + 24;
+    const threat = friendly
+      ? "friendly"
+      : unknownInCorridor || bvhQuery(target).some((hit) => hit.severity === "critical" && hit.distance < hit.radius)
       ? "critical"
       : "watch";
-    const detectionConfidence = clamp(
-      target.confidence * 0.5 + target.freshness * 0.2 + (feed.npu?.confidence || 0.7) * 0.22 + (target.type === "ground" ? 0.04 : 0.08) - distance / 3000,
-      0.45,
-      0.98,
-    );
+    const detectionConfidence = friendly
+      ? clamp(target.confidence * 0.5 + target.freshness * 0.35 + 0.14 - distance / 7000, 0.88, 0.99)
+      : clamp(
+          target.confidence * 0.5 + target.freshness * 0.2 + (feed.npu?.confidence || 0.7) * 0.22 + (target.type === "ground" ? 0.04 : 0.08) - distance / 3000,
+          0.45,
+          0.98,
+        );
     objects.push({
       ...target,
       range: Math.round(distance),
@@ -1208,6 +1230,8 @@ function detectObjectsForFeed(feed) {
       className: detectionClass(target),
       detectionConfidence,
       threat,
+      affiliation: friendly ? "friendly" : "unresolved",
+      identityKnown: friendly,
     });
   }
   return objects.sort((a, b) => a.range - b.range);
@@ -1671,6 +1695,8 @@ function drawPov(feed, visible) {
 }
 
 function detectionClass(asset) {
+  const friendly = knownFriendlyFor(asset);
+  if (friendly) return `${friendly.callsign} Friendly`;
   if (asset.type === "unknown-contact") return "Unknown Ground Contact";
   if (asset.type === "unknown-uas") return "Unknown Air Contact";
   if (asset.type === "vehicle") return "Wheeled Vehicle";
@@ -1950,6 +1976,10 @@ function drawPovObjects(feed, visible, width, height) {
       air: projectPovMapPoint(feed, obj, width, height, obj.z - POV_MAP_ANCHOR.z),
     }))
     .sort((a, b) => a.ground.y - b.ground.y);
+  overlay.dataset.identityReport = sorted
+    .filter((obj) => obj.id !== feed.id && isKnownFriendly(obj))
+    .map((obj) => `${obj.callsign}:${obj.className}:${obj.threat}`)
+    .join("|");
   const labeledIds = new Set(priorityLabeledObjects(sorted, feed.id).map((obj) => obj.id));
   const placedLabelRects = [];
 
@@ -1967,6 +1997,8 @@ function priorityLabeledObjects(objects, feedId) {
     .sort((a, b) => {
       const threatDelta = (b.threat === "critical") - (a.threat === "critical");
       if (threatDelta) return threatDelta;
+      const friendlyDelta = (a.affiliation === "friendly" ? 1 : 0) - (b.affiliation === "friendly" ? 1 : 0);
+      if (friendlyDelta) return friendlyDelta;
       const rangeDelta = a.range - b.range;
       if (Math.abs(rangeDelta) > 1) return rangeDelta;
       return b.detectionConfidence - a.detectionConfidence;
@@ -2091,7 +2123,11 @@ function addDetectionLabel(obj, width, height, placedRects) {
   title.textContent = `${obj.className} ${Math.round(obj.detectionConfidence * 100)}%`;
   const details = document.createElement("span");
   const sourceCopy = obj.trackSources?.length ? ` · ${obj.trackSources.slice(0, 2).join("+")}` : "";
-  const statusCopy = obj.trackStatus === "memory" ? `Last Seen ${Math.round(obj.trackAge)}s` : "Live Track";
+  const statusCopy = obj.affiliation === "friendly"
+    ? "Shared Friendly ID"
+    : obj.trackStatus === "memory"
+      ? `Last Seen ${Math.round(obj.trackAge)}s`
+      : "Live Track";
   details.textContent = `${obj.callsign} · ${formatMeters(obj.range)} · ${statusCopy}${sourceCopy}`;
   label.append(title, details);
   overlay.appendChild(label);

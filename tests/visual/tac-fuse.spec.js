@@ -113,7 +113,13 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   await expect(page.locator(".target-label").first()).toContainText(/%/);
   await expect(page.locator(".target-label").first()).toContainText(/\d+ m/);
   const targetClasses = (await page.locator(".target-label strong").allTextContents()).join(" ");
-  expect(targetClasses).toMatch(/Unknown Ground Contact|Unknown Air Contact|Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing/);
+  expect(targetClasses).toMatch(/Unknown Ground Contact|Unknown Air Contact|Wheeled Vehicle|RF Source|Personnel|Small UAS|Quadrotor|Fixed Wing|Friendly/);
+
+  await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());
+  await page.waitForTimeout(300);
+  const bravoIdentityReport = await page.locator("#pov-overlay").getAttribute("data-identity-report");
+  expect(bravoIdentityReport).toContain("Alpha:Alpha Friendly:friendly");
+  expect(bravoIdentityReport).not.toMatch(/Alpha:Unknown|Alpha Friendly:critical/);
 
   const commandBox = await page.locator(".command-panel").boundingBox();
   const metricsBox = await page.locator(".metric-strip").boundingBox();

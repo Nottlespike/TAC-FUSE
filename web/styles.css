@@ -555,6 +555,14 @@ canvas {
     color: var(--danger);
 }
 
+.target-label.friendly {
+    border-color: rgba(121, 184, 255, 0.58);
+}
+
+.target-label.friendly strong {
+    color: var(--blue);
+}
+
 .target-label.memory {
     border-style: dashed;
     opacity: 0.82;

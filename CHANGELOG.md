@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scene context rather than a bounding-box detection claim.
 
 ### Changed
+- Reworked the Local C2 route action from an ambiguous Route Solve lane toggle
+  into a Replan Route command that scores local candidate routes, stages the
+  command for sync, and draws the selected plan on both the AOI and 3D Field C2
+  views while keeping CUDA/CPU geometry as implementation status.
+- Added shared friendly identity handling in the field view so Alpha, Bravo,
+  Charlie, Delta, and Team 1 remain known friendly tracks across edge-node
+  perspectives instead of being reclassified as unknown detector objects.
+- Extended the self-improvement generator to order work as Explore, Create,
+  Beautify, and Cleanup; first-run tasks now include Strix `uv` bring-up,
+  CUDA/RTX route optimization, multiple denied-connectivity scenarios, and
+  Playwright-driven visual bug fixing before cleanup.
 - Made the dashboard explicitly state the Problem Statement 2 route-guard
   scenario and judging evidence: cut off from internet and command, local C2
   holds the corridor, and visible Technical Demo, Military Impact, and

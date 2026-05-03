@@ -664,7 +664,8 @@ def default_backlog() -> list[TaskBlueprint]:
                 "and sync-gate contracts so the demo is not one hard-coded field view."
             ),
             verify_command=(
-                "cd contrib/TAC-FUSE && uv run pytest tests/test_scenarios.py tests/test_replay.py -q"
+                "cd contrib/TAC-FUSE && uv run pytest "
+                "tests/test_scenarios.py tests/test_replay.py -q"
             ),
         ),
         TaskBlueprint(
