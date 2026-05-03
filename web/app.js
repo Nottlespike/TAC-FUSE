@@ -310,6 +310,7 @@ const fusedTracks = new Map();
 const TRACK_MEMORY_SECONDS = 18;
 const TRACK_PRUNE_SECONDS = 45;
 const TRACK_ASSOCIATION_RADIUS_M = 55;
+const DEMO_INCIDENT_TRIGGER_S = 32;
 let nextTrackSerial = 1;
 let povHitTargets = [];
 const fieldView = {
@@ -320,6 +321,15 @@ const fieldView = {
   startY: 0,
   lastX: 0,
   lastY: 0,
+};
+
+const localC2Incident = {
+  triggered: false,
+  active: false,
+  label: "Route Contact Incident",
+  detail: "RF pressure and unknown route contact detected",
+  triggeredAt: null,
+  takeoverCommands: 0,
 };
 
 // Swarm-wide tasking state — single-operator C2 proof
@@ -652,6 +662,55 @@ function issueCommandToDrone(feedId, command) {
   issueCommand(command, feed);
 }
 
+function triggerLocalC2Incident() {
+  if (localC2Incident.triggered) return;
+  localC2Incident.triggered = true;
+  localC2Incident.active = true;
+  localC2Incident.triggeredAt = simTime;
+  connectivityMode = "offline";
+
+  const routeContact = sceneClassTargets.find((target) => target.id === "scene-unknown-31");
+  if (routeContact) {
+    routeContact.x = 505;
+    routeContact.y = 690;
+    routeContact.z = terrainHeightAt(routeContact.x, routeContact.y) + 5;
+    routeContact.routeIndex = 3;
+    routeContact.confidence = Math.max(routeContact.confidence, 0.74);
+    routeContact.latency = Math.min(routeContact.latency, 42);
+  }
+
+  const signal = sceneClassTargets.find((target) => target.id === "scene-signal-04");
+  if (signal) {
+    signal.confidence = Math.max(signal.confidence, 0.86);
+    signal.latency = Math.min(signal.latency, 38);
+  }
+
+  pushLog("Incident: Unknown Contact Entered Route Corridor; Local C2 Took Authority.");
+  const takeoverTasks = [
+    ["uav-alpha", "patrol", { x: 560, y: 645 }],
+    ["uav-bravo", "patrol", { x: 420, y: 610 }],
+    ["uav-charlie", "hold", null],
+    ["uav-delta", "patrol", { x: 790, y: 615 }],
+  ];
+
+  for (const [feedId, command, station] of takeoverTasks) {
+    issueCommandToDrone(feedId, command);
+    const feed = feeds.find((item) => item.id === feedId);
+    if (feed && station) {
+      feed.station = { ...station };
+      feed.target = { ...station };
+    }
+  }
+  localC2Incident.takeoverCommands = takeoverTasks.length;
+  pushLog("Local C2 Takeover Complete: Swarm Retasked, Sync Gate Holding Commands.");
+}
+
+function maybeTriggerLocalC2Incident() {
+  if (simTime >= DEMO_INCIDENT_TRIGGER_S) {
+    triggerLocalC2Incident();
+  }
+}
+
 function issueCommandToAll(command) {
   feeds.forEach((feed) => {
     const record = {
@@ -780,6 +839,7 @@ function updateFieldContacts(dt) {
 function stepSimulation(dt) {
   if (simPaused) return;
   simTime += dt;
+  maybeTriggerLocalC2Incident();
   updateFieldContacts(dt);
 
   // drift feed quality metrics over time
@@ -2700,6 +2760,13 @@ function renderHardware(feed, hits) {
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
     ["H100 Classifier", `${edgeClassifierLabel()} · ${classifierCueDetail()}`, classifierCueClassification() ? "Good" : "Watch"],
     ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${edgeNpuLabel()}`, "Good"],
+    [
+      "Demo Incident",
+      localC2Incident.active
+        ? `T+${localC2Incident.triggeredAt.toFixed(0)}s Local C2 Took Authority`
+        : `Armed T+${DEMO_INCIDENT_TRIGGER_S}s`,
+      localC2Incident.active ? "Watch" : "Good",
+    ],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
   ];
@@ -2733,6 +2800,9 @@ function renderAlerts(feed, hits, scores) {
   const alerts = [];
   const critical = hits.find((hit) => hit.severity === "critical" && hit.distance < hit.radius);
   const visibleUnknown = visibleObjects(feed).find((obj) => obj.type.startsWith("unknown") && obj.threat === "critical");
+  if (localC2Incident.active) {
+    alerts.push(["critical", "Incident: Unknown Contact In Corridor; Local C2 Takeover Active"]);
+  }
   if (critical) {
     alerts.push(["critical", `${feed.callsign} Inside ${critical.label}; Route Correction Active`]);
   } else if (visibleUnknown) {
@@ -2832,6 +2902,13 @@ function renderDeniedProof() {
 
   const offlineCapabilities = [
     { name: "Local C2 Authority", status: "active", detail: "Direct command issue to all drones" },
+    {
+      name: "Incident Takeover",
+      status: localC2Incident.active ? "active" : "degraded",
+      detail: localC2Incident.active
+        ? `${localC2Incident.takeoverCommands} local retasks staged at T+${localC2Incident.triggeredAt.toFixed(0)}s`
+        : `Armed for T+${DEMO_INCIDENT_TRIGGER_S}s route incident`,
+    },
     { name: "Sensor Fusion", status: "active", detail: "Feeds fused on laptop — no external server" },
     { name: "Automatic Corridor Guard", status: "active", detail: `${rtControlBackendLabel()} Controls Drone Standoff And Hold Decisions` },
     { name: "Distributed NPU CV", status: "active", detail: `${feeds.length} drone NPUs classify simple local cues` },
