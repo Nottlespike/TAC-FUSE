@@ -54,9 +54,9 @@ Pass criteria:
 - Automatic corridor guard consumes the same fused contacts that the cue labeler sees.
 - The pathing lane scores corridor edges, line of sight, RF-denial volumes,
   unknown contacts, standoff, battery, and latency.
-- On Strix, RTX ray-tracing cores or CUDA geometry back the BVH/spatial-query
+- On edge hardware, RTX ray-tracing cores or CUDA geometry back the spatial-query
   path when available.
-- CPU parity returns the same decision shape for deterministic offline tests.
+- Deterministic software validation returns the same decision shape for offline tests.
 - The UI names the corridor state, not a vague compute stage or manual route action.
 
 Validation:
@@ -66,7 +66,7 @@ uv run pytest tests/test_ray_query.py -q
 uv run python scripts/check_ray_runtime.py
 ```
 
-Strix hardware proof:
+Hardware proof:
 
 ```bash
 uv run python scripts/check_ray_runtime.py --require-rtx
@@ -76,8 +76,7 @@ uv run python scripts/check_ray_runtime.py --require-rtx
 
 Pass criteria:
 
-- Alpha, Bravo, Charlie, and Delta model onboard cueing as local device outputs;
-  Strix is the current proof rig for that lane.
+- Alpha, Bravo, Charlie, and Delta model onboard cueing as local device outputs.
 - The NPU path uses the zero-shot labeler as a naive cue source for rendered
   local objects such as wheeled vehicles, small UAS, personnel, RF sources, and
   obstructions.
@@ -92,7 +91,7 @@ Validation:
 uv run pytest tests/test_zero_shot_vision.py tests/test_npu_siglip.py -q
 ```
 
-Strix hardware proof:
+Hardware proof:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu

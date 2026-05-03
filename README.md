@@ -16,7 +16,7 @@ uv run pytest
 uv run ruff check src tests
 uv run python scripts/cache_visual_assets.py --dry-run
 uv run python scripts/check_ray_runtime.py
-uv run python scripts/write_strix_compute_status.py --output web/strix_compute_status.js
+uv run python scripts/write_edge_compute_status.py --output web/edge_compute_status.js
 ```
 
 Open `web/index.html` directly in a browser for the emulator. The default tab is
@@ -24,7 +24,7 @@ the 3D Field C2 view with selected edge-node controls; the Overview tab keeps
 the 2D AOI map available without crowding the working view. Operator commands
 change drone behavior. Offline mode queues commands and export records while
 local graphics, automatic corridor-guard geometry, and sensor-cue paths keep
-running. The browser loads `web/strix_compute_status.js` so the visible compute
+running. The browser loads `web/edge_compute_status.js` so the visible compute
 posture comes from the runtime inspectors instead of hard-coded UI copy.
 
 To populate the first real Earth-raster layer for the browser view:
@@ -51,17 +51,18 @@ models/siglip2-field-npu/
 
 Set `TAC_FUSE_SIGLIP_MODEL_DIR` if the exported model lives elsewhere. Set `TAC_FUSE_SIGLIP_DEVICE=NPU` on Intel NPU systems, or `CPU` for parity checks.
 
-For the distributed device-CV lane, with Strix as the hard-readiness proof rig:
+For the distributed device-CV lane, run the hardware-readiness checks on the
+target edge kit:
 
 ```bash
 TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py --device NPU --model-dir models/siglip2-field-npu
-TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_strix_compute_status.py --output web/strix_compute_status.js --device NPU --model-dir models/siglip2-field-npu --host-label Strix --source-label strix
+TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py --output web/edge_compute_status.js --device NPU --model-dir models/siglip2-field-npu --host-label "Edge Kit" --source-label hardware
 ```
 
 If the NPU check reports ready, regenerate the browser status artifact and use
 it as the local CV proof point for the onboard cue lane in the demo. If it is
-not ready, keep the demo on the denied-connectivity C2 path; the status card
-will show CPU BVH parity and NPU pending rather than overstating readiness.
+not ready, keep the demo on the denied-connectivity C2 path; the status card will
+show accelerated compute pending rather than overstating readiness.
 
 ## Foundry Boundary
 
@@ -75,8 +76,8 @@ Core execution writes SQLite state first. Foundry integration is represented as 
 
 ## Local Hardware Boundary
 
-The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The BVH path is the automatic corridor guard: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries; without RTX/CUDA availability the CPU parity path stays available for offline validation.
+The demo treats connectivity and acceleration independently. When the laptop is offline, SQLite state, operator tasking, drone coordination, cached maps, and local alerting continue. The geometry path is the automatic corridor guard: it checks drone paths, route corridors, hazards, nearby assets, and unknown contacts. Ray-tracing cores are useful because they accelerate those spatial queries.
 
-For a Strix hardware run, use `scripts/check_strix_bringup.sh`. It verifies
+For a hardware run, use `scripts/check_edge_compute_bringup.sh`. It verifies
 `uv`, CUDA/RTX readiness, and the OpenVINO NPU model path, then writes
-`web/strix_compute_status.js` for the static browser demo.
+`web/edge_compute_status.js` for the static browser demo.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the TAC-FUSE Strix target is ready for the functional hardware demo.
+# Verify the TAC-FUSE accelerated edge-compute target is ready for the hardware demo.
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ fi
 
 cd "$PROJECT_ROOT"
 
-echo "=== TAC-FUSE Strix Bring-Up ==="
+echo "=== TAC-FUSE Edge Compute Bring-Up ==="
 echo "[OK]   uv: $(command -v uv)"
 
 uv sync --extra dev
@@ -36,4 +36,4 @@ TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py \
     --host-label "Edge Kit" \
     --source-label hardware_bringup
 
-echo "=== Strix bring-up complete ==="
+echo "=== edge compute bring-up complete ==="

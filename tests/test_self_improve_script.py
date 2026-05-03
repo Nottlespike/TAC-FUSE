@@ -115,7 +115,7 @@ def test_task_pack_yaml_contains_priority_order() -> None:
         "Drone coordination",
         "Sensor fusion and alerting",
         "Functional Redis/embedding/track runtime",
-        "Strix CUDA/NPU bring-up",
+        "Accelerated edge compute bring-up",
         "CUDA route optimization",
         "Scenario portfolio",
         "Playwright visual polish",

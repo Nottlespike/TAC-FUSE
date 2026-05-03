@@ -6,8 +6,8 @@ TAC-FUSE targets Problem Statement 2: Edge Deployments and Drone Operation, so
 the audit and generated work stay centered on hardened-laptop local C2 under
 degraded or denied connectivity. Accelerator and object-detection work is
 treated as a supporting proof point, not the product thesis.
-The final hardware target is Strix: an 8 GB RTX laptop GPU plus Intel NPU, with
-`uv` available to non-interactive SSH shells as part of bring-up.
+The hardware lane targets an edge kit with an 8 GB RTX-class GPU plus Intel NPU,
+with `uv` available to non-interactive SSH shells as part of bring-up.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("drone_coordination", "Drone coordination"),
     ("sensor_fusion_alerting", "Sensor fusion and alerting"),
     ("functional_runtime", "Functional Redis/embedding/track runtime"),
-    ("strix_hardware_readiness", "Strix CUDA/NPU bring-up"),
+    ("edge_compute_readiness", "Accelerated edge compute bring-up"),
     ("cuda_route_optimization", "CUDA route optimization"),
     ("scenario_portfolio", "Scenario portfolio"),
     ("playwright_visual_polish", "Playwright visual polish"),
@@ -93,8 +93,11 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "object permanence",
         "fusion spool",
     ),
-    "strix_hardware_readiness": (
-        "strix",
+    "edge_compute_readiness": (
+        "edge kit",
+        "edge hardware",
+        "accelerated compute",
+        "hardware bring-up",
         "uv",
         "cuda",
         "rtx",
@@ -226,7 +229,7 @@ SUPPORTING_CONTEXT_TERMS = (
 INFERENCE_OWNED_PATHS = (
     "configs/training/",
     "scripts/check_npu_runtime.py",
-    "scripts/write_strix_compute_status.py",
+    "scripts/write_edge_compute_status.py",
     "src/tac_fuse/npu_siglip.py",
     "tests/test_npu_siglip.py",
 )
@@ -603,22 +606,22 @@ def default_backlog() -> list[TaskBlueprint]:
             ),
         ),
         TaskBlueprint(
-            name="tac-fuse-p0-strix-bringup",
+            name="tac-fuse-p0-edge-compute-bringup",
             priority="P0",
             phase="explore",
-            title="Make Strix bring-up a hard readiness path",
-            focus="strix_hardware_readiness",
+            title="Make accelerated edge compute bring-up a hard readiness path",
+            focus="edge_compute_readiness",
             body=(
-                "Codify the Strix hardware target: non-interactive SSH must expose uv "
-                "on PATH, the RTX 5070-class 8 GB GPU must pass CUDA/RTX readiness, "
-                "and the Intel NPU/OpenVINO model path must fail clearly until the "
-                "exported model is present. CPU parity remains for CI, but Strix "
-                "bring-up is a hard functional target, not UI copy. Regenerate the "
-                "browser compute-status artifact from runtime inspectors after the "
-                "hardware checks pass."
+                "Codify the accelerated edge-compute target: non-interactive SSH must "
+                "expose uv on PATH, the 8 GB RTX-class GPU must pass CUDA/RTX "
+                "readiness, and the Intel NPU/OpenVINO model path must fail clearly "
+                "until the exported model is present. Software validation remains for "
+                "CI, but hardware bring-up is a hard functional target, not UI copy. "
+                "Regenerate the browser compute-status artifact from runtime inspectors "
+                "after the hardware checks pass."
             ),
             verify_command=(
-                "cd contrib/TAC-FUSE && bash scripts/check_strix_bringup.sh"
+                "cd contrib/TAC-FUSE && bash scripts/check_edge_compute_bringup.sh"
             ),
         ),
         TaskBlueprint(
@@ -667,8 +670,9 @@ def default_backlog() -> list[TaskBlueprint]:
                 "Turn the ray-query lane into a route optimizer rather than a label. "
                 "Score candidate paths against corridor boundaries, unknown contacts, "
                 "RF-denial areas, line of sight, standoff, battery, and latency. Use "
-                "CUDA compute or an RTX/BVH boundary on Strix when available, with CPU "
-                "parity returning the same route decision in tests."
+                "CUDA compute or an RTX geometry boundary on edge hardware when "
+                "available, with deterministic software validation returning the same "
+                "route decision in tests."
             ),
             verify_command=(
                 "cd contrib/TAC-FUSE && uv run pytest "
@@ -803,11 +807,11 @@ def default_backlog() -> list[TaskBlueprint]:
             focus="local_c2_authority",
             body=(
                 "Audit docs, UI copy, and scripts so accelerator and object-detection paths "
-                "are functional supporting lanes rather than the main product. Strix CUDA/RTX "
-                "and NPU checks should be hard readiness gates when a task targets that "
-                "hardware, while CI and the local C2 proof continue through CPU/parity and "
-                "offline state when inference hardware, model downloads, or cloud services "
-                "are unavailable."
+                "are functional supporting lanes rather than the main product. CUDA/RTX "
+                "and NPU checks should be hard readiness gates when a task targets edge "
+                "hardware, while CI and the local C2 proof continue through deterministic "
+                "software validation and offline state when inference hardware, model "
+                "downloads, or cloud services are unavailable."
             ),
             verify_command=(
                 "cd contrib/TAC-FUSE && uv run python scripts/self_improve.py "
@@ -849,7 +853,7 @@ Guardrails:
 - Visual work must use Playwright screenshots or assertions, including desktop and
   mobile when practical, to catch overlap, wasted panels, and unreadable labels.
 - CUDA/RTX work should improve route optimization or spatial query quality, not just
-  report a GPU badge. CPU parity must keep automated tests deterministic.
+  report a GPU badge. Software validation fixtures must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
 - Rendered object work should use recognizable class instances such as a four-wheeled
@@ -857,8 +861,8 @@ Guardrails:
   popping into the middle of the workspace.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
-- Strix bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,
-  the exported NPU model, Redis, and the actual Strix hardware, and should fail
+- Hardware bring-up tasks are different: they may require uv, CUDA/RTX, OpenVINO,
+  the exported NPU model, Redis, and actual edge hardware, and should fail
   clearly when one of those is missing.
 - If you touch behavior, add or update focused offline tests.
 - Update contrib/TAC-FUSE/CHANGELOG.md for behavior, interface, demo workflow, dependency,
@@ -923,7 +927,7 @@ Fix this alignment finding:
 
 Keep the product thesis on hardened-laptop local C2 under degraded or denied connectivity.
 Accelerator, MPU/NPU/GPU/RTX, and object-detection language must remain supporting,
-but Strix hardware bring-up is a real functional target.
+but accelerated edge-hardware bring-up is a real functional target.
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
@@ -932,7 +936,7 @@ Guardrails:
 - Visual work must use Playwright screenshots or assertions, including desktop and
   mobile when practical, to catch overlap, wasted panels, and unreadable labels.
 - CUDA/RTX work should improve route optimization or spatial query quality, not just
-  report a GPU badge. CPU parity must keep automated tests deterministic.
+  report a GPU badge. Software validation fixtures must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
 - Rendered object work should use recognizable class instances such as a four-wheeled
@@ -940,8 +944,8 @@ Guardrails:
   popping into the middle of the workspace.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
   internet, Hugging Face downloads, RTX hardware, or an Intel NPU.
-- Strix bring-up tasks may hard-require uv, CUDA/RTX, OpenVINO, Redis, and the
-  exported NPU model on the actual Strix target.
+- Hardware bring-up tasks may hard-require uv, CUDA/RTX, OpenVINO, Redis, and the
+  exported NPU model on actual edge hardware.
 
 Update focused docs, UI copy, code, or tests as needed. If this changes behavior, update
 contrib/TAC-FUSE/CHANGELOG.md.

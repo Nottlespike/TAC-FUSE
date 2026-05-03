@@ -8,10 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Strix compute display pipeline: `scripts/write_strix_compute_status.py`
+- Edge compute display pipeline: `scripts/write_edge_compute_status.py`
   collects the ray-query and Intel NPU runtime inspectors and writes
-  `web/strix_compute_status.js` so the static browser demo can display live
-  Strix readiness from a script tag without requiring an HTTP server.
+  `web/edge_compute_status.js` so the static browser demo can display live
+  accelerated-compute readiness from a script tag without requiring an HTTP
+  server.
 - Alpha test plan and queueable polish task pack focused on route-guard C2
   quality, RTX/BVH pathing, Strix NPU zero-shot cue labels, and trained-model
   readiness.
@@ -63,10 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scene context rather than a bounding-box detection claim.
 
 ### Changed
-- The browser operator dock now includes a Strix Compute metric sourced from
-  `web/strix_compute_status.js`; the default checked-in artifact shows CPU BVH
-  parity with NPU pending, while Strix bring-up rewrites it after hardware
-  checks pass.
+- The browser operator dock now includes an Edge Compute metric sourced from
+  `web/edge_compute_status.js`; the default checked-in artifact shows
+  accelerated compute pending, while hardware bring-up rewrites it after CUDA
+  and NPU checks pass.
 - Rendered object work now stays tied to classifier-training evidence: the 3D
   Field C2 view draws the wheeled vehicle as a four-wheel silhouette, counts
   vehicle frames for the local classifier story, and moves aerial contacts in
