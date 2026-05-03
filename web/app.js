@@ -267,8 +267,8 @@ const sceneClassTargets = [
 
 let selectedId = "uav-alpha";
 let connectivityMode = "offline";
-const strixCompute = window.TAC_FUSE_STRIX_COMPUTE || null;
-let rayPath = strixCompute?.ray?.accelerated ? "cuda" : "cpu";
+const edgeCompute = window.TAC_FUSE_EDGE_COMPUTE || null;
+let rayPath = edgeCompute?.ray?.accelerated ? "cuda" : "pending";
 let simPaused = false;
 let simTime = 0;
 let lastTick = performance.now();
@@ -452,23 +452,23 @@ function displayTier(tier) {
 }
 
 function geometryBackendLabel() {
-  return strixCompute?.ui?.backend_label || (rayPath === "cuda" ? "CUDA/RTX" : "CPU BVH");
+  return edgeCompute?.ui?.backend_label || (rayPath === "cuda" ? "Accelerated Geometry" : "Geometry Acceleration Pending");
 }
 
-function strixComputeSummaryLabel() {
-  return strixCompute?.ui?.summary_label || `${geometryBackendLabel()} + NPU Pending`;
+function edgeComputeSummaryLabel() {
+  return edgeCompute?.ui?.summary_label || "Accelerated Compute Pending";
 }
 
-function strixNpuLabel() {
-  return strixCompute?.ui?.npu_label || "NPU Pending";
+function edgeNpuLabel() {
+  return edgeCompute?.ui?.npu_label || "Edge NPU Pending";
 }
 
-function strixComputeFreshnessLabel() {
-  const generatedAt = strixCompute?.generated_at;
+function edgeComputeFreshnessLabel() {
+  const generatedAt = edgeCompute?.generated_at;
   if (!generatedAt) return "Fallback";
   const timestamp = Date.parse(generatedAt);
   if (Number.isNaN(timestamp)) return "Fallback";
-  const staleAfterSeconds = strixCompute?.ui?.stale_after_seconds || 300;
+  const staleAfterSeconds = edgeCompute?.ui?.stale_after_seconds || 300;
   const ageSeconds = Math.max(0, (Date.now() - timestamp) / 1000);
   return ageSeconds > staleAfterSeconds ? "Stale" : "Live";
 }
@@ -2361,11 +2361,11 @@ function renderHardware(feed, hits) {
     ["Fusion Authority", "Laptop-Local Sensor Fusion", "Good"],
     ["Local AOI", "Synthesized 1.2 km Field View", "Good"],
     ["Terrain Mesh", `${terrainTriangleCount()} Triangles`, "Good"],
-    ["Strix Compute", `${strixComputeSummaryLabel()} · ${strixComputeFreshnessLabel()}`, rayPath === "cuda" || strixCompute?.npu?.ready ? "Good" : "Watch"],
+    ["Edge Compute", `${edgeComputeSummaryLabel()} · ${edgeComputeFreshnessLabel()}`, rayPath === "cuda" || edgeCompute?.npu?.ready ? "Good" : "Watch"],
     ["Corridor Geometry", `${routeState} · ${formatMeters(routeLengthMeters())} · ${geometryBackendLabel()}`, criticalHit ? "Watch" : "Good"],
     ["Spatial Geometry", `${hits.length} Checks · ${formatLatencyMs(bvhMs)} · ${geometryBackendLabel()}`, "Good"],
     ["Track Memory", `${liveTracks} Fused Tracks · ${TRACK_MEMORY_SECONDS}s Hold`, "Good"],
-    ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${strixNpuLabel()}`, "Good"],
+    ["Distributed NPU CV", `${npuReady}/${feeds.length} Air Nodes · ${unknowns.length} Unknowns · ${edgeNpuLabel()}`, "Good"],
     ["Spool Buffer", `${spoolDepth} Staged For Gate`, spoolDepth > 0 ? "Watch" : "Good"],
     ["Sync Watermark", `T+${syncWatermark.toFixed(1)}s`, spoolDepth > 0 ? "Watch" : "Good"],
   ];
@@ -2376,7 +2376,7 @@ function renderHardware(feed, hits) {
     )
     .join("");
   setText("#bvh-label", criticalHit ? "Corridor Blocked" : nearestHit ? "Corridor Monitoring" : "Corridor Guarded");
-  setText("#compute-label", strixComputeSummaryLabel());
+  setText("#compute-label", edgeComputeSummaryLabel());
   setText("#fusion-badge", `Route Guard ${routeState}`);
   setText(
     "#map-hud-copy",

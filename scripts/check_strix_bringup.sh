@@ -29,11 +29,11 @@ TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/check_npu_runtime.py \
     --device NPU \
     --model-dir models/siglip2-field-npu \
     --require-npu
-TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_strix_compute_status.py \
-    --output web/strix_compute_status.js \
+TAC_FUSE_SIGLIP_DEVICE=NPU uv run python scripts/write_edge_compute_status.py \
+    --output web/edge_compute_status.js \
     --device NPU \
     --model-dir models/siglip2-field-npu \
-    --host-label Strix \
-    --source-label strix_bringup
+    --host-label "Edge Kit" \
+    --source-label hardware_bringup
 
 echo "=== Strix bring-up complete ==="

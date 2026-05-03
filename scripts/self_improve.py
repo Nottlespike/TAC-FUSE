@@ -226,6 +226,7 @@ SUPPORTING_CONTEXT_TERMS = (
 INFERENCE_OWNED_PATHS = (
     "configs/training/",
     "scripts/check_npu_runtime.py",
+    "scripts/write_strix_compute_status.py",
     "src/tac_fuse/npu_siglip.py",
     "tests/test_npu_siglip.py",
 )
@@ -612,7 +613,9 @@ def default_backlog() -> list[TaskBlueprint]:
                 "on PATH, the RTX 5070-class 8 GB GPU must pass CUDA/RTX readiness, "
                 "and the Intel NPU/OpenVINO model path must fail clearly until the "
                 "exported model is present. CPU parity remains for CI, but Strix "
-                "bring-up is a hard functional target, not UI copy."
+                "bring-up is a hard functional target, not UI copy. Regenerate the "
+                "browser compute-status artifact from runtime inspectors after the "
+                "hardware checks pass."
             ),
             verify_command=(
                 "cd contrib/TAC-FUSE && bash scripts/check_strix_bringup.sh"
