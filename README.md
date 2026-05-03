@@ -51,6 +51,13 @@ The current H100-selected PyTorch classifier package is staged locally under
 `docs/siglip2_expanded_vehicle_classifier.md` for metrics, checksums, and the
 OpenVINO export boundary.
 
+Fetch the ignored model files from Hugging Face before running the packaged
+classifier lane:
+
+```bash
+uv run python scripts/fetch_siglip2_classifier_package.py --verify-checksums
+```
+
 For a demo machine that should load the packaged PyTorch checkpoint directly:
 
 ```bash

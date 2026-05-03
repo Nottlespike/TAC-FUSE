@@ -16,6 +16,18 @@ The manifest records the Ax + BoTorch search, dataset provenance, winning
 hyperparameters, evaluation metrics, and SHA-256 checksums for the ignored model
 files.
 
+The package is mirrored on Hugging Face at
+`Kearm/siglip2-expanded-vehicle-hpo-best`. Fetch it into the ignored local model
+path with:
+
+```bash
+uv run python scripts/fetch_siglip2_classifier_package.py --verify-checksums
+```
+
+The script uses `hf download` for the normal path and keeps a direct fallback for
+the single large safetensors file if the CLI transfer stalls before writing
+bytes.
+
 ## Contents
 
 ```text

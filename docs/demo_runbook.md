@@ -130,6 +130,7 @@ the talk track.
 # 1. Install / sync
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 uv sync --extra dev --extra classifier-runtime
+uv run python scripts/fetch_siglip2_classifier_package.py --verify-checksums
 
 # 2. Run full offline test suite
 uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }

@@ -23,6 +23,9 @@ def test_packaged_siglip2_manifest_is_self_describing() -> None:
     files = {item["path"]: item for item in manifest["files"]}
 
     assert packaged_siglip2_model_dir(manifest).name == "siglip2-expanded-vehicle-hpo-best"
+    assert manifest["hub"]["repo_id"] == "Kearm/siglip2-expanded-vehicle-hpo-best"
+    assert manifest["hub"]["revision"] == "main"
+    assert manifest["hub"]["download_command"].startswith("hf download Kearm/")
     assert "classifier_head.pt" in files
     assert "backbone/model.safetensors" in files
     assert "processor/tokenizer.json" in files

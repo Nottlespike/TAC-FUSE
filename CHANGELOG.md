@@ -105,6 +105,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browser classifier-cue artifact writer (`scripts/write_classifier_cue.py`)
   that runs the packaged H100-selected SigLIP2 classifier and emits
   `web/classifier_cue.js` for direct `file://` TAC demo use.
+- Hugging Face package wiring for `Kearm/siglip2-expanded-vehicle-hpo-best`,
+  including manifest Hub metadata and `scripts/fetch_siglip2_classifier_package.py`
+  for repeatable `hf download` retrieval with checksum validation.
 
 ### Changed
 - The browser field view now applies RT geometry decisions to drone standoff,

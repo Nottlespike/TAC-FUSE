@@ -2,6 +2,11 @@
   "package_id": "siglip2-expanded-vehicle-hpo-best",
   "artifact_type": "pytorch_siglip2_image_classifier",
   "package_dir": "models/siglip2-expanded-vehicle-hpo-best",
+  "hub": {
+    "repo_id": "Kearm/siglip2-expanded-vehicle-hpo-best",
+    "revision": "main",
+    "download_command": "hf download Kearm/siglip2-expanded-vehicle-hpo-best --local-dir models/siglip2-expanded-vehicle-hpo-best"
+  },
   "base_model": "google/siglip2-base-patch16-224",
   "packaged_at_utc": "2026-05-03T10:51:43Z",
   "source": {
