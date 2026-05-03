@@ -282,6 +282,16 @@ const TRACK_MEMORY_SECONDS = 18;
 const TRACK_PRUNE_SECONDS = 45;
 const TRACK_ASSOCIATION_RADIUS_M = 55;
 let nextTrackSerial = 1;
+const activeRoutePlan = {
+  version: 0,
+  status: "Monitoring",
+  lane: "CUDA/RTX",
+  routeOffsetM: 0,
+  score: 72,
+  target: ROUTE_GUARD_PATH[2],
+  updatedAt: 0,
+  reason: "Baseline Corridor Guard",
+};
 
 // Swarm-wide tasking state — single-operator C2 proof
 // Tracks operator commands across all drones for the denied-ops proof path
@@ -432,6 +442,7 @@ function displayCommand(command) {
     hold: "Hold",
     overwatch: "Overwatch",
     patrol: "Patrol",
+    replan: "Replan",
     relay: "Relay",
     resume: "Resume",
     return: "Return",
@@ -564,6 +575,115 @@ function issueCommandToAll(command) {
   spoolDepth = stagedCommands.length;
   syncStaged = spoolDepth > 0;
   if (syncStaged) syncWatermark = simTime;
+}
+
+function distanceToRouteOffset(point, offsetM) {
+  let minDistance = Infinity;
+  for (let index = 0; index < ROUTE_GUARD_PATH.length - 1; index += 1) {
+    const segment = routeSegmentOffset(ROUTE_GUARD_PATH[index], ROUTE_GUARD_PATH[index + 1], offsetM);
+    minDistance = Math.min(minDistance, distancePointToSegment(point, segment.a, segment.b));
+  }
+  return minDistance;
+}
+
+function candidateRouteTarget(feed, offsetM) {
+  let nearestIndex = 1;
+  let nearestDistance = Infinity;
+  for (let index = 1; index < ROUTE_GUARD_PATH.length; index += 1) {
+    const distance = Math.hypot(feed.x - ROUTE_GUARD_PATH[index].x, feed.y - ROUTE_GUARD_PATH[index].y);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  }
+  const nextIndex = Math.min(ROUTE_GUARD_PATH.length - 1, nearestIndex + 1);
+  const segment = routeSegmentOffset(ROUTE_GUARD_PATH[nextIndex - 1], ROUTE_GUARD_PATH[nextIndex], offsetM);
+  return segment.b;
+}
+
+function scoreRouteCandidate(feed, offsetM) {
+  let score = 100;
+  for (const hazard of hazards) {
+    const clearance = distanceToRouteOffset(hazard, offsetM) - hazard.r;
+    if (clearance < 80) score -= hazard.severity === "critical" ? 28 : 16;
+    else if (clearance < 160) score -= hazard.severity === "critical" ? 14 : 8;
+  }
+  for (const contact of sceneClassTargets) {
+    const clearance = distanceToRouteOffset(contact, offsetM);
+    if (contact.type.startsWith("unknown") && clearance < ROUTE_GUARD_HALF_WIDTH_M + 35) score -= 22;
+    else if (clearance < ROUTE_GUARD_HALF_WIDTH_M + 50) score -= 8;
+  }
+  score -= Math.max(0, 70 - feed.battery) * 0.18;
+  score -= Math.max(0, feed.latency - 80) * 0.04;
+  return clamp(score, 0, 99);
+}
+
+function planRoute(feed) {
+  const offsets = [-96, -52, 0, 52, 96];
+  const candidates = offsets
+    .map((offsetM) => ({
+      offsetM,
+      score: scoreRouteCandidate(feed, offsetM),
+      target: candidateRouteTarget(feed, offsetM),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const selected = candidates[0];
+  const lane = rayPath === "cuda" ? "CUDA/RTX" : "CPU";
+  const status = selected.score >= 76 ? "Replanned" : selected.score >= 58 ? "Caution Plan" : "Hold Pending ID";
+  const targetDistance = Math.hypot(feed.x - selected.target.x, feed.y - selected.target.y);
+  const etaSeconds = Math.max(8, Math.round(targetDistance / Math.max(4, feed.speed || 18)));
+  const reason = selected.offsetM === 0
+    ? "Center Corridor Clear"
+    : selected.offsetM < 0
+      ? "West Standoff Selected"
+      : "East Standoff Selected";
+  Object.assign(activeRoutePlan, {
+    version: activeRoutePlan.version + 1,
+    status,
+    lane,
+    routeOffsetM: selected.offsetM,
+    score: Math.round(selected.score),
+    target: selected.target,
+    updatedAt: simTime,
+    reason,
+    etaSeconds,
+  });
+  feed.command = selected.score < 58 ? "hold" : "patrol";
+  feed.target = selected.target;
+  feed.plannedOffsetM = selected.offsetM;
+  return { ...activeRoutePlan };
+}
+
+function replanRoute() {
+  const feed = selectedFeed();
+  const plan = planRoute(feed);
+  const record = {
+    id: `cmd-${String(commandSeq).padStart(3, "0")}`,
+    assetId: feed.id,
+    callsign: feed.callsign,
+    command: "replan",
+    mode: "fusion-local",
+    status: "staged",
+    ts: simTime,
+    routePlan: plan,
+  };
+  commandSeq += 1;
+  stagedCommands.unshift(record);
+  stagedCommands.splice(12);
+
+  const prevCommand = swarmTasking.lastCommand[feed.id];
+  if (prevCommand && prevCommand.command !== "replan") {
+    swarmTasking.retaskCount += 1;
+  }
+  swarmTasking.lastCommand[feed.id] = { command: "replan", ts: simTime };
+  swarmTasking.history.unshift({ assetId: feed.id, callsign: feed.callsign, command: "replan", ts: simTime });
+  swarmTasking.history.splice(20);
+
+  spoolDepth = stagedCommands.length;
+  syncStaged = spoolDepth > 0;
+  syncWatermark = simTime;
+  pushLog(`${feed.callsign} Route Replanned: ${plan.status} · ${plan.lane} · Score ${plan.score}.`);
+  renderFrame();
 }
 
 function movePlanarActor(actor, target, dt, cruiseSpeed, turnRateDeg) {
@@ -1377,6 +1497,7 @@ function drawSwarmMap() {
   for (const feed of feeds) {
     drawPath(ctx, feed, width, height);
   }
+  drawActiveRoutePlan(ctx, width, height);
   for (const asset of allFeeds()) {
     drawAsset(ctx, asset, width, height);
   }
@@ -1409,6 +1530,35 @@ function drawPath(ctx, feed, width, height) {
   ctx.lineTo(end.x, end.y);
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+function drawActiveRoutePlan(ctx, width, height) {
+  if (activeRoutePlan.version === 0) return;
+  const feed = selectedFeed();
+  const start = worldToCanvas(feed, width, height);
+  const end = worldToCanvas(activeRoutePlan.target, width, height);
+  ctx.save();
+  ctx.strokeStyle = "rgba(85, 214, 166, 0.92)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([12, 7]);
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#55d6a6";
+  ctx.strokeStyle = "#10171b";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(end.x, end.y, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "rgba(8, 13, 15, 0.82)";
+  ctx.fillRect(end.x + 10, end.y - 18, 148, 24);
+  ctx.fillStyle = "#f2efe5";
+  ctx.font = "12px Inter, Arial";
+  ctx.fillText(`Plan ${activeRoutePlan.score} · ${activeRoutePlan.lane}`, end.x + 18, end.y - 2);
+  ctx.restore();
 }
 
 function drawRayFan(ctx, feed, width, height) {
@@ -1513,6 +1663,7 @@ function drawPov(feed, visible) {
   drawPov3DGrid(feed, width, height);
   drawPovRouteGuardCorridor(feed, width, height);
   drawPovHazards(feed, width, height);
+  drawPovActiveRoutePlan(feed, width, height);
   drawPovDetectionFrustum(feed, width, height);
   drawPovObjects(feed, visible, width, height);
   drawPovTelemetry(feed, visible, width, height);

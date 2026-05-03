@@ -57,10 +57,16 @@ The primary capability is not object detection. The primary capability is resili
 | Check | Requirement | Verification command |
 |-------|-------------|----------------------|
 | Python | 3.12 or 3.14 | `uv run python --version` |
-| Package manager | `uv` | `which uv` |
+| Package manager | `uv` visible to non-interactive shells | `export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; command -v uv` |
 | Install | `uv sync --extra dev` | `uv sync --extra dev && echo "OK"` |
 | Tests pass | Full offline test suite | `uv run pytest -q` |
 | Lint clean | `ruff check src tests` | `uv run ruff check src tests` |
+
+For Strix remote checks, always use the same non-interactive SSH bootstrap:
+
+```bash
+ssh strix 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; cd /home/kearm/AlphaHENG/contrib/TAC-FUSE && command -v uv && bash scripts/check_strix_bringup.sh'
+```
 
 ### 2.3 RTX Prerequisite Check Script
 
@@ -105,7 +111,9 @@ echo "If all [OK]/[WARN] — proceed with demo."
 echo "Any [FAIL] — invoke fallback ladder before starting."
 ```
 
-Run with: `bash docs/check_rtx_prereqs.sh` (or `uv run bash` if on a system without `bash` in PATH).
+Run with: `bash docs/check_rtx_prereqs.sh`. It now fails if `uv` is not on
+PATH, if the GPU is below the Strix 8 GB class, or if the TAC-FUSE RTX runtime
+boundary cannot use CUDA/RTX.
 
 ---
 
@@ -119,6 +127,7 @@ the talk track.
 
 ```bash
 # 1. Install / sync
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 uv sync --extra dev
 
 # 2. Run full offline test suite
@@ -127,8 +136,8 @@ uv run pytest -q || { echo "Tests must pass before demo"; exit 1; }
 # 3. Lint check
 uv run ruff check src tests || { echo "Lint violations must be fixed"; exit 1; }
 
-# 4. Optional: validate RTX availability (only if GPU acceleration is desired)
-bash docs/check_rtx_prereqs.sh || echo "RTX not available — CPU fallback will be used"
+# 4. Strix hard-readiness lane
+bash scripts/check_strix_bringup.sh
 ```
 
 ### 3.2 Phase 1 — Core State Initialization (2–3 min)

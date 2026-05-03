@@ -33,6 +33,9 @@ PRIORITY_ORDER: tuple[tuple[str, str], ...] = (
     ("sensor_fusion_alerting", "Sensor fusion and alerting"),
     ("functional_runtime", "Functional Redis/embedding/track runtime"),
     ("strix_hardware_readiness", "Strix CUDA/NPU bring-up"),
+    ("cuda_route_optimization", "CUDA route optimization"),
+    ("scenario_portfolio", "Scenario portfolio"),
+    ("playwright_visual_polish", "Playwright visual polish"),
     ("object_map_quantification", "3D field-C2 quantification"),
     ("power_latency_posture", "Power/latency posture"),
     ("enterprise_sync_boundary", "Enterprise sync boundary"),
@@ -98,6 +101,33 @@ ANCHOR_TERMS: dict[str, tuple[str, ...]] = {
         "openvino",
         "npu",
     ),
+    "cuda_route_optimization": (
+        "route optimizer",
+        "route optimization",
+        "candidate route",
+        "cuda compute",
+        "rtx bvh",
+        "ray query",
+        "line of sight",
+        "standoff",
+    ),
+    "scenario_portfolio": (
+        "scenario portfolio",
+        "route guard",
+        "convoy overwatch",
+        "checkpoint resupply",
+        "downed drone recovery",
+        "perimeter unknowns",
+    ),
+    "playwright_visual_polish": (
+        "playwright",
+        "visual",
+        "screenshot",
+        "overlap",
+        "scroll",
+        "mobile",
+        "desktop",
+    ),
     "object_map_quantification": (
         "3d field view",
         "field c2 view",
@@ -131,6 +161,7 @@ CRITICAL_SURFACES: tuple[str, ...] = (
     "AGENTS.md",
     "docs/demo_runbook.md",
     "docs/problem_statement_alignment.md",
+    "docs/two_to_five_minute_demo.md",
     "web/index.html",
     "web/app.js",
 )
@@ -603,6 +634,40 @@ def default_backlog() -> list[TaskBlueprint]:
             ),
         ),
         TaskBlueprint(
+            name="tac-fuse-p1-cuda-route-optimizer",
+            priority="P1",
+            phase="create",
+            title="Use CUDA or RTX geometry for route optimization",
+            focus="cuda_route_optimization",
+            body=(
+                "Turn the ray-query lane into a route optimizer rather than a label. "
+                "Score candidate paths against corridor boundaries, unknown contacts, "
+                "RF-denial areas, line of sight, standoff, battery, and latency. Use "
+                "CUDA compute or an RTX/BVH boundary on Strix when available, with CPU "
+                "parity returning the same route decision in tests."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && uv run pytest "
+                "tests/test_ray_query.py tests/test_route_optimizer.py -q"
+            ),
+        ),
+        TaskBlueprint(
+            name="tac-fuse-p1-scenario-portfolio",
+            priority="P1",
+            phase="create",
+            title="Add multiple denied-connectivity scenarios",
+            focus="scenario_portfolio",
+            body=(
+                "Add reusable scenarios beyond Route Guard: Convoy Overwatch, Checkpoint "
+                "Resupply, Downed Drone Recovery, and Perimeter Unknowns. Each scenario "
+                "should drive the same local C2, sensor cue, route geometry, power posture, "
+                "and sync-gate contracts so the demo is not one hard-coded field view."
+            ),
+            verify_command=(
+                "cd contrib/TAC-FUSE && uv run pytest tests/test_scenarios.py tests/test_replay.py -q"
+            ),
+        ),
+        TaskBlueprint(
             name="tac-fuse-p1-local-alert-prioritization",
             priority="P1",
             phase="create",
@@ -619,6 +684,20 @@ def default_backlog() -> list[TaskBlueprint]:
                 "tests/test_local_sensor_ingest_bus.py tests/test_sensor_models.py "
                 "tests/test_mission_state.py -q"
             ),
+        ),
+        TaskBlueprint(
+            name="tac-fuse-p1-playwright-visual-bugs",
+            priority="P1",
+            phase="beautify",
+            title="Use Playwright to fix the visible demo bugs",
+            focus="playwright_visual_polish",
+            body=(
+                "Run Playwright desktop and mobile screenshots, then fix concrete visual "
+                "bugs: overlapping labels, wasted panels, tiny or unreadable metrics, "
+                "broken scrolling, duplicate map stories, and command controls that are "
+                "hard to reach. Add visual assertions so these problems do not return."
+            ),
+            verify_command="cd contrib/TAC-FUSE && npm run test:visual",
         ),
         TaskBlueprint(
             name="tac-fuse-p1-3d-object-map-quantification",
@@ -676,13 +755,15 @@ def default_backlog() -> list[TaskBlueprint]:
             name="tac-fuse-p2-accelerator-supporting-role",
             priority="P2",
             phase="cleanup",
-            title="Keep NPU, MPU, GPU, and RTX paths in a supporting role",
+            title="Keep accelerators functional but not thesis-dominating",
             focus="local_c2_authority",
             body=(
                 "Audit docs, UI copy, and scripts so accelerator and object-detection paths "
-                "are clearly optional supporting capabilities. The accepted thesis is: local "
-                "C2 continues on the hardened laptop even when inference hardware, model "
-                "downloads, or cloud services are unavailable."
+                "are functional supporting lanes rather than the main product. Strix CUDA/RTX "
+                "and NPU checks should be hard readiness gates when a task targets that "
+                "hardware, while CI and the local C2 proof continue through CPU/parity and "
+                "offline state when inference hardware, model downloads, or cloud services "
+                "are unavailable."
             ),
             verify_command=(
                 "cd contrib/TAC-FUSE && uv run python scripts/self_improve.py "
@@ -719,6 +800,12 @@ Task: {blueprint.title}
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
+- Scenario work must support Route Guard plus Convoy Overwatch, Checkpoint Resupply,
+  Downed Drone Recovery, and Perimeter Unknowns when the task touches demo data.
+- Visual work must use Playwright screenshots or assertions, including desktop and
+  mobile when practical, to catch overlap, wasted panels, and unreadable labels.
+- CUDA/RTX work should improve route optimization or spatial query quality, not just
+  report a GPU badge. CPU parity must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
@@ -745,6 +832,10 @@ def task_from_blueprint(blueprint: TaskBlueprint) -> dict[str, Any]:
             "problem_statement": PROBLEM_STATEMENT,
             "workflow_stage": blueprint.phase,
             "alignment_focus": blueprint.focus,
+            "scenario_portfolio_required": True,
+            "playwright_visual_required": True,
+            "cuda_route_optimization_required": True,
+            "uv_bringup_required": True,
         },
     }
 
@@ -787,6 +878,12 @@ but Strix hardware bring-up is a real functional target.
 
 Guardrails:
 - Do not make Intel NPU availability, model accuracy, or object detection the center of the work.
+- Scenario work must support Route Guard plus Convoy Overwatch, Checkpoint Resupply,
+  Downed Drone Recovery, and Perimeter Unknowns when the task touches demo data.
+- Visual work must use Playwright screenshots or assertions, including desktop and
+  mobile when practical, to catch overlap, wasted panels, and unreadable labels.
+- CUDA/RTX work should improve route optimization or spatial query quality, not just
+  report a GPU badge. CPU parity must keep automated tests deterministic.
 - If object detection is shown, render quantifiable objects on a local 3D map rather than
   a forward terrain/corridor camera.
 - Core CI behavior must remain offline-testable and must not require Foundry, Maven,
@@ -814,6 +911,10 @@ contrib/TAC-FUSE/CHANGELOG.md.
             "alignment_focus": finding.focus,
             "finding_code": finding.code,
             "finding_path": finding.path,
+            "scenario_portfolio_required": True,
+            "playwright_visual_required": True,
+            "cuda_route_optimization_required": True,
+            "uv_bringup_required": True,
         },
     }
 
@@ -859,6 +960,16 @@ def build_task_pack(
             "workflow_order": [label for _key, label in WORKFLOW_ORDER],
             "priority_order": [label for _key, label in PRIORITY_ORDER],
             "alignment_findings": len(audit.findings),
+            "scenario_portfolio": [
+                "Route Guard",
+                "Convoy Overwatch",
+                "Checkpoint Resupply",
+                "Downed Drone Recovery",
+                "Perimeter Unknowns",
+            ],
+            "playwright_visual_required": True,
+            "cuda_route_optimization_required": True,
+            "uv_bringup_required": True,
         },
         "tasks": tasks,
     }

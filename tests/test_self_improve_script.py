@@ -114,6 +114,11 @@ def test_task_pack_yaml_contains_priority_order() -> None:
         "Disconnected resilience",
         "Drone coordination",
         "Sensor fusion and alerting",
+        "Functional Redis/embedding/track runtime",
+        "Strix CUDA/NPU bring-up",
+        "CUDA route optimization",
+        "Scenario portfolio",
+        "Playwright visual polish",
         "3D field-C2 quantification",
         "Power/latency posture",
         "Enterprise sync boundary",
@@ -127,7 +132,7 @@ def test_task_pack_yaml_contains_priority_order() -> None:
 
 
 def test_object_map_task_is_beautify_stage() -> None:
-    task_pack = self_improve.build_task_pack(max_tasks=4)
+    task_pack = self_improve.build_task_pack(max_tasks=11)
     object_map_task = next(
         task
         for task in task_pack["tasks"]
@@ -136,3 +141,20 @@ def test_object_map_task_is_beautify_stage() -> None:
 
     assert object_map_task["metadata"]["workflow_stage"] == "beautify"
     assert "Current stage: Beautify" in object_map_task["prompt"]
+
+
+def test_generated_tasks_include_scenarios_playwright_and_cuda() -> None:
+    task_pack = self_improve.build_task_pack(max_tasks=11)
+    tasks_by_focus = {
+        task["metadata"]["alignment_focus"]: task for task in task_pack["tasks"]
+    }
+
+    assert "cuda_route_optimization" in tasks_by_focus
+    assert "scenario_portfolio" in tasks_by_focus
+    assert "playwright_visual_polish" in tasks_by_focus
+    assert "Convoy Overwatch" in task_pack["metadata"]["scenario_portfolio"]
+    for task in task_pack["tasks"]:
+        assert task["metadata"]["scenario_portfolio_required"] is True
+        assert task["metadata"]["playwright_visual_required"] is True
+        assert task["metadata"]["cuda_route_optimization_required"] is True
+        assert task["metadata"]["uv_bringup_required"] is True
