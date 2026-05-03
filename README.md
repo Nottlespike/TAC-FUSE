@@ -5,7 +5,8 @@ TAC-FUSE is a local-first edge command-and-control emulator for hardened field l
 The core demo is the local C2 loop: cached theater view, drone swarm state, operator tasking, local mission database, prioritized alerts, and deferred Maven/Foundry sync. Local inference is a supporting capability. The SigLIP/OpenVINO path shows that each edge device can classify or prioritize identifiable objects and unknown contacts from local feeds, while the application remains useful without Intel NPU hardware, cloud inference, or model downloads.
 
 See `docs/problem_statement_alignment.md` for the project-level targeting
-rules and `docs/two_to_five_minute_demo.md` for the short judging demo script.
+rules, `docs/two_to_five_minute_demo.md` for the short judging demo script, and
+`docs/alpha_test_plan.md` for the polish gates and AlphaHENG task list.
 
 ## Quick Start
 
