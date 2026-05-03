@@ -1,0 +1,13 @@
+{
+  "name": "tac-fuse-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test:visual": "playwright test",
+    "test:visual:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}
