@@ -172,8 +172,14 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   });
   expect(evidenceOverlap).toEqual([]);
 
+  const alphaFusionIds = await page.locator("#pov-overlay").getAttribute("data-fusion-ids");
+  await page.locator(".target-label").first().click();
+  await expect(page.locator(".target-label.selected-contact")).toBeVisible();
+
   await page.evaluate(() => document.querySelector('[data-feed="uav-bravo"]').click());
   await page.waitForTimeout(300);
+  const bravoFusionIds = await page.locator("#pov-overlay").getAttribute("data-fusion-ids");
+  expect(bravoFusionIds).toBe(alphaFusionIds);
   const bravoIdentityReport = await page.locator("#pov-overlay").getAttribute("data-identity-report");
   expect(bravoIdentityReport).toContain("Alpha:Alpha Friendly:friendly");
   expect(bravoIdentityReport).not.toMatch(/Alpha:Unknown|Alpha Friendly:critical/);
@@ -201,6 +207,14 @@ test("operator surface is dense and the selected POV is animated", async ({ page
   expect(first.litPixels).toBeGreaterThan(250);
   expect(first.variedPixels).toBeGreaterThan(180);
   expect(second.hash).not.toBe(first.hash);
+
+  await page.mouse.move(povBox.x + povBox.width * 0.46, povBox.y + povBox.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(povBox.x + povBox.width * 0.68, povBox.y + povBox.height * 0.56, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(120);
+  const rotated = await canvasHash(page, "#pov-canvas");
+  expect(rotated.hash).not.toBe(second.hash);
 
   await page.locator("#mode-degraded").click();
   await expect(page.locator("#mode-status")).toContainText("Local C2 Active");

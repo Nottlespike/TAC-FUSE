@@ -9,6 +9,11 @@ const AOI_TILE = {
 };
 const BASE = { x: 120, y: 850 };
 const POV_MAP_ANCHOR = { x: 610, y: 590, z: 120 };
+const FIELD_VIEW_DEFAULT = {
+  yaw: -0.06,
+  pitch: 0.86,
+  zoom: 1.0,
+};
 const colors = {
   alpha: "#55d6a6",
   bravo: "#79b8ff",
@@ -266,6 +271,7 @@ const sceneClassTargets = [
 ];
 
 let selectedId = "uav-alpha";
+let selectedContactId = null;
 let connectivityMode = "offline";
 const edgeCompute = window.TAC_FUSE_EDGE_COMPUTE || null;
 let rayPath = edgeCompute?.ray?.accelerated ? "cuda" : "validation";
@@ -284,6 +290,16 @@ const TRACK_MEMORY_SECONDS = 18;
 const TRACK_PRUNE_SECONDS = 45;
 const TRACK_ASSOCIATION_RADIUS_M = 55;
 let nextTrackSerial = 1;
+let povHitTargets = [];
+const fieldView = {
+  ...FIELD_VIEW_DEFAULT,
+  dragging: false,
+  moved: false,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+};
 
 // Swarm-wide tasking state — single-operator C2 proof
 // Tracks operator commands across all drones for the denied-ops proof path
@@ -504,6 +520,11 @@ function detectableObjects() {
 
 function selectedFeed() {
   return feeds.find((f) => f.id === selectedId) || feeds[0];
+}
+
+function selectedContact() {
+  if (!selectedContactId) return null;
+  return [...fusedTracks.values()].find((track) => track.id === selectedContactId) || null;
 }
 
 function pushLog(text) {
@@ -1066,6 +1087,7 @@ function updateFusedTracks(dt) {
     }
     if (simTime - track.lastSeen > TRACK_PRUNE_SECONDS) {
       fusedTracks.delete(trackId);
+      if (selectedContactId === trackId) selectedContactId = null;
     }
   }
 }
@@ -1142,25 +1164,22 @@ function associateTrack(observation) {
 }
 
 function fusedTrackObjects(feed) {
-  const direct = detectObjectsForFeed(feed);
-  const directById = new Map(direct.map((obj) => [obj.id, obj]));
   const fused = [];
 
   for (const track of fusedTracks.values()) {
     const age = simTime - track.lastSeen;
     if (age > TRACK_MEMORY_SECONDS) continue;
-    if (track.targetId === feed.id) continue;
-    const directObj = directById.get(track.targetId);
-    const base = directObj || track;
-    const dx = track.x - feed.x;
-    const dy = track.y - feed.y;
+    const dx = track.x - BASE.x;
+    const dy = track.y - BASE.y;
     const range = Math.round(Math.hypot(dx, dy));
     const angle = Math.atan2(dy, dx);
-    const heading = (feed.heading * Math.PI) / 180;
+    const heading = -0.65;
     const delta = wrapAngle(angle - heading);
-    const sourceNames = Array.from(track.sources);
+    const liveSources = Array.from(track.sources);
+    const sourceNames = liveSources.length
+      ? liveSources
+      : track.history.slice(0, 4).map((item) => item.source);
     fused.push({
-      ...base,
       id: track.id,
       targetId: track.targetId,
       callsign: track.callsign,
@@ -1174,27 +1193,16 @@ function fusedTrackObjects(feed) {
       className: track.className,
       range,
       bearingDeg: Math.round(((delta * 180) / Math.PI + 360) % 360),
-      altitudeDelta: Math.round(track.z - feed.z),
+      altitudeDelta: Math.round(track.z - terrainHeightAt(track.x, track.y)),
       detectionConfidence: clamp(track.confidence - age * 0.012, 0.38, 0.98),
       threat: track.threat,
       affiliation: track.affiliation,
       identityKnown: track.identityKnown,
       trackAge: age,
-      trackStatus: directObj ? "live" : "memory",
-      trackSources: sourceNames.length ? sourceNames : track.history.slice(0, 3).map((item) => item.source),
+      trackStatus: liveSources.length ? "live" : "memory",
+      trackSources: sourceNames,
       observationCount: track.history.length,
     });
-  }
-
-  for (const obj of direct) {
-    if (![...fusedTracks.values()].some((track) => track.targetId === obj.id)) {
-      fused.push({
-        ...obj,
-        trackStatus: "new",
-        trackSources: [feed.callsign],
-        observationCount: 1,
-      });
-    }
   }
 
   return fused.sort((a, b) => {
@@ -1830,12 +1838,16 @@ function mapProjectionScale(width, height) {
 
 function projectPovMapPoint(feed, point, width, height, zRelativeM = 0) {
   void feed;
-  const scale = mapProjectionScale(width, height);
+  const scale = mapProjectionScale(width, height) * fieldView.zoom;
   const dx = point.x - POV_MAP_ANCHOR.x;
   const dy = point.y - POV_MAP_ANCHOR.y;
+  const cos = Math.cos(fieldView.yaw);
+  const sin = Math.sin(fieldView.yaw);
+  const rotatedX = dx * cos - dy * sin;
+  const rotatedY = dx * sin + dy * cos;
   return {
-    x: width * 0.5 + (dx - dy) * scale * 0.66,
-    y: height * 0.58 + (dx + dy) * scale * 0.34 - zRelativeM * 0.42,
+    x: width * 0.5 + (rotatedX - rotatedY) * scale * 0.66,
+    y: height * 0.58 + (rotatedX + rotatedY) * scale * 0.34 * fieldView.pitch - zRelativeM * 0.42 * fieldView.zoom,
   };
 }
 
@@ -2036,6 +2048,7 @@ function drawPovDetectionFrustum(feed, width, height) {
 
 function drawPovObjects(feed, visible, width, height) {
   overlay.innerHTML = "";
+  povHitTargets = [];
   const selected = {
     ...feed,
     range: 0,
@@ -2044,8 +2057,13 @@ function drawPovObjects(feed, visible, width, height) {
     className: "Selected Node",
     detectionConfidence: 1,
     threat: "watch",
+    targetId: feed.id,
+    trackStatus: "selected",
+    trackSources: ["Selected"],
+    observationCount: 1,
   };
-  const mapObjects = [selected, ...visible];
+  const hasSelectedFeedTrack = visible.some((obj) => obj.targetId === feed.id || obj.id === feed.id);
+  const mapObjects = hasSelectedFeedTrack ? visible : [selected, ...visible];
   const sorted = mapObjects
     .map((obj) => ({
       ...obj,
@@ -2063,11 +2081,24 @@ function drawPovObjects(feed, visible, width, height) {
     .filter((obj) => obj.id !== feed.id && isKnownFriendly(obj))
     .map((obj) => `${obj.callsign}:${obj.className}:${obj.threat}`)
     .join("|");
+  overlay.dataset.fusionIds = visible
+    .map((obj) => obj.targetId || obj.id)
+    .sort()
+    .join("|");
+  overlay.dataset.selectedContact = selectedContactId || "";
   const labeledIds = new Set(priorityLabeledObjects(sorted, feed.id).map((obj) => obj.id));
   const placedLabelRects = [];
 
   for (const obj of sorted) {
     drawPovObjectMarker(obj);
+    povHitTargets.push({
+      id: obj.id,
+      targetId: obj.targetId || obj.id,
+      obj,
+      x: obj.air.x,
+      y: obj.air.y,
+      radius: obj.type === "vehicle" ? 32 : 26,
+    });
     if (labeledIds.has(obj.id)) {
       addDetectionLabel(obj, width, height, placedLabelRects);
     }
@@ -2075,8 +2106,8 @@ function drawPovObjects(feed, visible, width, height) {
 }
 
 function priorityLabeledObjects(objects, feedId) {
-  return objects
-    .filter((obj) => obj.id !== feedId)
+  const ranked = objects
+    .filter((obj) => obj.id !== feedId && obj.targetId !== feedId)
     .sort((a, b) => {
       const threatDelta = (b.threat === "critical") - (a.threat === "critical");
       if (threatDelta) return threatDelta;
@@ -2085,17 +2116,26 @@ function priorityLabeledObjects(objects, feedId) {
       const rangeDelta = a.range - b.range;
       if (Math.abs(rangeDelta) > 1) return rangeDelta;
       return b.detectionConfidence - a.detectionConfidence;
-    })
-    .slice(0, MAX_VISIBLE_DETECTION_LABELS);
+    });
+  const selected = selectedContactId
+    ? ranked.find((obj) => obj.id === selectedContactId || obj.targetId === selectedContactId)
+    : null;
+  if (!selected) return ranked.slice(0, MAX_VISIBLE_DETECTION_LABELS);
+  return [
+    selected,
+    ...ranked.filter((obj) => obj.id !== selected.id).slice(0, MAX_VISIBLE_DETECTION_LABELS - 1),
+  ];
 }
 
 function drawPovObjectMarker(obj) {
-  const color = obj.id === selectedId ? "#f5f1e8" : colors[obj.key] || "#55d6a6";
+  const selectedPlatform = obj.id === selectedId || obj.targetId === selectedId;
+  const selectedContact = obj.id === selectedContactId || obj.targetId === selectedContactId;
+  const color = selectedPlatform ? "#f5f1e8" : colors[obj.key] || "#55d6a6";
   const markerRadius = obj.type === "ground" ? 8 : 11;
   const critical = obj.threat === "critical";
 
   povCtx.save();
-  povCtx.strokeStyle = critical ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
+  povCtx.strokeStyle = selectedContact ? "#e6c35c" : critical ? "#ff5d5d" : "rgba(245, 241, 232, 0.78)";
   povCtx.fillStyle = "rgba(0, 0, 0, 0.28)";
   povCtx.lineWidth = 1.5;
   povCtx.beginPath();
@@ -2109,8 +2149,8 @@ function drawPovObjectMarker(obj) {
   povCtx.stroke();
 
   povCtx.fillStyle = color;
-  povCtx.strokeStyle = critical ? "#ff5d5d" : "#f5f1e8";
-  povCtx.lineWidth = critical ? 3 : 2;
+  povCtx.strokeStyle = selectedContact ? "#e6c35c" : critical ? "#ff5d5d" : "#f5f1e8";
+  povCtx.lineWidth = selectedContact || critical ? 3 : 2;
   if (obj.type === "vehicle") {
     drawWheeledVehicleGlyph(povCtx, obj.air.x, obj.air.y, obj.heading || 0, 0.88);
   } else if (["fixed-wing", "quadrotor", "ground"].includes(obj.type)) {
@@ -2158,10 +2198,14 @@ function drawPovObjectMarker(obj) {
     povCtx.stroke();
   }
 
-  if (obj.id !== selectedId) {
+  if (!selectedPlatform) {
     const boxW = obj.type === "ground" ? 42 : 54;
     const boxH = obj.type === "ground" ? 24 : 34;
-    povCtx.strokeStyle = critical ? "rgba(255, 93, 93, 0.9)" : "rgba(85, 214, 166, 0.86)";
+    povCtx.strokeStyle = selectedContact
+      ? "rgba(230, 195, 92, 0.95)"
+      : critical
+        ? "rgba(255, 93, 93, 0.9)"
+        : "rgba(85, 214, 166, 0.86)";
     povCtx.setLineDash([7, 5]);
     povCtx.strokeRect(obj.air.x - boxW / 2, obj.air.y - boxH / 2, boxW, boxH);
     povCtx.setLineDash([]);
@@ -2260,7 +2304,12 @@ function formatTrackSourcePair(sources = []) {
 function addDetectionLabel(obj, width, height, placedRects) {
   const rect = placeDetectionLabel(obj, width, height, placedRects);
   const label = document.createElement("div");
-  label.className = `target-label ${obj.threat} ${obj.trackStatus || ""} ${obj.type || ""}`;
+  const selectedClass = obj.id === selectedContactId || obj.targetId === selectedContactId
+    ? "selected-contact"
+    : "";
+  label.className = `target-label ${obj.threat} ${obj.trackStatus || ""} ${obj.type || ""} ${selectedClass}`;
+  label.dataset.trackId = obj.id;
+  label.title = `Select ${obj.className}`;
   label.style.left = `${rect.x}px`;
   label.style.top = `${rect.y}px`;
 
@@ -2295,7 +2344,80 @@ function addDetectionLabel(obj, width, height, placedRects) {
     grid.appendChild(chip);
   }
   label.append(header, grid);
+  label.addEventListener("click", (event) => {
+    event.stopPropagation();
+    selectFusedObject(obj);
+  });
   overlay.appendChild(label);
+}
+
+function selectFusedObject(obj) {
+  const targetId = obj.targetId || obj.id;
+  const friendly = feeds.find((feed) => feed.id === targetId);
+  if (friendly) {
+    selectedId = friendly.id;
+    selectedContactId = obj.id;
+    pushLog(`Selected ${friendly.callsign} In Shared Fusion View.`);
+  } else {
+    selectedContactId = obj.id;
+    pushLog(`Selected ${obj.className}: ${obj.callsign} From Fused Track Memory.`);
+  }
+  renderFrame();
+}
+
+function canvasPointFromEvent(event) {
+  const rect = povCanvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * povCanvas.width,
+    y: ((event.clientY - rect.top) / rect.height) * povCanvas.height,
+  };
+}
+
+function findPovHit(point) {
+  for (const hit of [...povHitTargets].reverse()) {
+    const distance = Math.hypot(point.x - hit.x, point.y - hit.y);
+    if (distance <= hit.radius) return hit.obj;
+  }
+  return null;
+}
+
+function handlePovPointerDown(event) {
+  fieldView.dragging = true;
+  fieldView.moved = false;
+  fieldView.startX = event.clientX;
+  fieldView.startY = event.clientY;
+  fieldView.lastX = event.clientX;
+  fieldView.lastY = event.clientY;
+  povCanvas.setPointerCapture?.(event.pointerId);
+}
+
+function handlePovPointerMove(event) {
+  if (!fieldView.dragging) return;
+  const dx = event.clientX - fieldView.lastX;
+  const dy = event.clientY - fieldView.lastY;
+  const total = Math.hypot(event.clientX - fieldView.startX, event.clientY - fieldView.startY);
+  if (total > 4) fieldView.moved = true;
+  fieldView.yaw = wrapAngle(fieldView.yaw + dx * 0.007);
+  fieldView.pitch = clamp(fieldView.pitch + dy * 0.0025, 0.58, 1.08);
+  fieldView.lastX = event.clientX;
+  fieldView.lastY = event.clientY;
+  renderFrame();
+}
+
+function handlePovPointerUp(event) {
+  if (!fieldView.dragging) return;
+  fieldView.dragging = false;
+  povCanvas.releasePointerCapture?.(event.pointerId);
+  if (fieldView.moved) return;
+  const hit = findPovHit(canvasPointFromEvent(event));
+  if (hit) selectFusedObject(hit);
+}
+
+function handlePovWheel(event) {
+  event.preventDefault();
+  const zoomDelta = event.deltaY > 0 ? -0.08 : 0.08;
+  fieldView.zoom = clamp(fieldView.zoom + zoomDelta, 0.78, 1.42);
+  renderFrame();
 }
 
 function drawPovTelemetry(feed, visible, width, height) {
@@ -2303,9 +2425,9 @@ function drawPovTelemetry(feed, visible, width, height) {
   povCtx.fillRect(18, 18, 260, 78);
   povCtx.fillStyle = "#f2efe5";
   povCtx.font = "14px Inter, Arial";
-  povCtx.fillText(`${feed.callsign} 3D Field View`, 32, 42);
-  povCtx.fillText(`CUE ${visible.length}  HDG ${Math.round((feed.heading + 360) % 360)}  ALT ${formatMeters(feed.z)}`, 32, 66);
-  povCtx.fillText(`SPD ${Math.round(feed.speed)} m/s  BAT ${Math.round(feed.battery)}%`, 32, 90);
+  povCtx.fillText(`${feed.callsign} 3D Fused Field View`, 32, 42);
+  povCtx.fillText(`FUSED ${visible.length}  YAW ${Math.round((fieldView.yaw * 180) / Math.PI)}`, 32, 66);
+  povCtx.fillText(`ALT ${formatMeters(feed.z)}  BAT ${Math.round(feed.battery)}%`, 32, 90);
 }
 
 function drawPovQuantificationPanel(visible, width, height) {
@@ -2367,6 +2489,7 @@ function renderFeeds() {
   document.querySelectorAll(".asset-row").forEach((row) => {
     row.addEventListener("click", () => {
       selectedId = row.dataset.feed;
+      selectedContactId = null;
       pushLog(`Selected Platform Switched To ${selectedFeed().callsign}.`);
       renderFrame();
     });
@@ -2388,6 +2511,7 @@ function renderFeedTabs() {
   el.querySelectorAll(".feed-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       selectedId = tab.dataset.feed;
+      selectedContactId = null;
       pushLog(`Selected Platform Switched To ${selectedFeed().callsign}.`);
       renderFrame();
     });
@@ -2758,6 +2882,7 @@ function cycleSelected(offset) {
   const current = Math.max(0, all.findIndex((a) => a.id === selectedId));
   const next = (current + offset + all.length) % all.length;
   selectedId = all[next].id;
+  selectedContactId = null;
   pushLog(`Selected Feed Switched To ${all[next].callsign}.`);
   renderFrame();
 }
@@ -2806,6 +2931,13 @@ document.querySelector("#next-frame").addEventListener("click", () => cycleSelec
 document.querySelectorAll(".view-tab").forEach((button) => {
   button.addEventListener("click", () => setActiveView(button.dataset.view));
 });
+povCanvas.addEventListener("pointerdown", handlePovPointerDown);
+povCanvas.addEventListener("pointermove", handlePovPointerMove);
+povCanvas.addEventListener("pointerup", handlePovPointerUp);
+povCanvas.addEventListener("pointerleave", () => {
+  fieldView.dragging = false;
+});
+povCanvas.addEventListener("wheel", handlePovWheel, { passive: false });
 
 function setConnectivityMode(mode) {
   connectivityMode = mode;

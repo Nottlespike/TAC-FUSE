@@ -469,6 +469,15 @@ canvas {
     height: 100%;
 }
 
+#pov-canvas {
+    cursor: grab;
+    touch-action: none;
+}
+
+#pov-canvas:active {
+    cursor: grabbing;
+}
+
 .map-hud {
     position: absolute;
     left: 14px;
@@ -531,6 +540,8 @@ canvas {
     white-space: normal;
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(8px);
+    cursor: pointer;
+    pointer-events: auto;
 }
 
 .target-label-header {
@@ -617,6 +628,16 @@ canvas {
 .target-label.memory {
     border-style: dashed;
     opacity: 0.82;
+}
+
+.target-label.selected-contact {
+    border-color: rgba(230, 195, 92, 0.92);
+    box-shadow: 0 0 0 1px rgba(230, 195, 92, 0.32), 0 12px 34px rgba(0, 0, 0, 0.36);
+}
+
+.target-label.selected-contact strong,
+.target-label.selected-contact .target-confidence {
+    color: #e6c35c !important;
 }
 
 .earth-footer {
